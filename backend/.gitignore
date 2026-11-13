@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+
+# Generated output
+coverage/
+dist/
+
+# User-uploaded listing images (local storage)
+uploads/
