@@ -216,9 +216,33 @@ function translateFindError(err, hadBookmark) {
   return toApiError(err);
 }
 
+// Looks up several listings in ONE request (used by the request lists, so a page of requests
+// does not cost one read per listing). Returns a Map of listingId -> raw document. Unknown ids
+// are simply missing; deleted listings ARE returned (callers decide what to show).
+async function findListingsByIds(listingIds) {
+  const ids = [...new Set(listingIds)].filter((id) => typeof id === 'string' && SAFE_LISTING_ID.test(id));
+  if (ids.length === 0) {
+    return new Map();
+  }
+  let response;
+  try {
+    response = await run((client, db) => client.postAllDocs({ db, keys: ids.map(toDocId), includeDocs: true }));
+  } catch (err) {
+    throw toApiError(err);
+  }
+  const listings = new Map();
+  for (const row of (response.result && response.result.rows) || []) {
+    if (row.doc && row.doc.type === 'listing' && typeof row.doc._id === 'string') {
+      listings.set(row.doc._id.slice(LISTING_PREFIX.length), row.doc);
+    }
+  }
+  return listings;
+}
+
 module.exports = {
   insertListing,
   findListingById,
+  findListingsByIds,
   updateListing,
   findListingsByOwner,
   buildPublicSelector,

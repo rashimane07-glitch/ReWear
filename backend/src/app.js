@@ -9,6 +9,7 @@ const ApiError = require('./utils/ApiError');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const listingRoutes = require('./routes/listing.routes');
+const requestRoutes = require('./routes/request.routes');
 
 const app = express();
 
@@ -91,6 +92,9 @@ app.use('/api/v1/users', userRoutes);
 
 // --- Listings: create, image upload, read, edit, delete ---
 app.use('/api/v1/listings', listingRoutes);
+
+// --- Requests: ask for a listing, accept / decline / cancel / complete (all need a login) ---
+app.use('/api/v1/requests', requestRoutes);
 
 // --- 404 handler: no route matched ---
 app.use((req, res) => {

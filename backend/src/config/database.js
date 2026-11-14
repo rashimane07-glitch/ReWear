@@ -242,6 +242,10 @@ const INDEXES = [
   { name: 'listing-by-owner', fields: ['type', 'ownerId', 'isDeleted'] }, // "my listings"
   { name: 'listing-feed-created', fields: ['type', 'isDeleted', 'status', 'createdAt'] }, // sort=newest|oldest
   { name: 'listing-feed-price', fields: ['type', 'isDeleted', 'status', 'price'] }, // sort=price_asc|price_desc
+  // Requests (Task 9): plain equality lookups, no sort (the lists are sorted in the code).
+  { name: 'request-by-owner', fields: ['type', 'ownerId'] }, // requests received
+  { name: 'request-by-requester', fields: ['type', 'requesterId'] }, // requests sent
+  { name: 'request-by-listing', fields: ['type', 'listingId', 'status'] }, // pending requests of one listing
 ];
 
 // Creates the indexes the queries need. Safe to run repeatedly (Cloudant answers

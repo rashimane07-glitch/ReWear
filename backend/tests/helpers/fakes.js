@@ -77,9 +77,8 @@ function matches(doc, selector) {
       return Object.entries(condition).every(([operator, argument]) => {
         if (operator === '$in') return argument.includes(value);
         if (operator === '$eq') return value === argument;
-        if (operator === '$exists') return (value !== undefined) === argument; // null counts as existing
-        if (operator === '$regex') return typeof value === 'string' && toRegExp(argument).test(value);
         if (operator === '$exists') return (value !== undefined) === argument;
+        if (operator === '$regex') return typeof value === 'string' && toRegExp(argument).test(value);
         if (['$gt', '$gte', '$lt', '$lte'].includes(operator)) {
           if (value === undefined) return false; // a missing field never matches a comparison
           const order = compareValues(value, argument);

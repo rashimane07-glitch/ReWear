@@ -49,6 +49,26 @@ const BROWSE = Object.freeze({
   MAX_COLOUR_LENGTH: 30,
 });
 
+// Requests (Task 9). One request = one student asking for one listing.
+//   pending   -> accepted | declined (by the owner) | cancelled (withdrawn by the requester)
+//   accepted  -> completed (owner) | cancelled (owner or requester: the arrangement fell through)
+// declined, cancelled and completed are final (a cancelled request may be sent again).
+const REQUEST_STATUS = Object.freeze({
+  PENDING: 'pending',
+  ACCEPTED: 'accepted',
+  DECLINED: 'declined',
+  CANCELLED: 'cancelled',
+  COMPLETED: 'completed',
+});
+const REQUEST_STATUSES = Object.values(REQUEST_STATUS);
+
+const REQUEST_LIMITS = Object.freeze({
+  MAX_MESSAGE_LENGTH: 300,
+  OFFER_TITLE: { min: 3, max: 100 },
+  OFFER_DESCRIPTION: { min: 10, max: 500 },
+  MAX_LIST_RESULTS: 200, // requests returned by one list call
+});
+
 module.exports = {
   LISTING_CATEGORIES,
   LISTING_SIZES,
@@ -59,4 +79,7 @@ module.exports = {
   IMAGE_LIMITS,
   BROWSE_SORTS,
   BROWSE,
+  REQUEST_STATUS,
+  REQUEST_STATUSES,
+  REQUEST_LIMITS,
 };

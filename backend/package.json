@@ -9,6 +9,7 @@
     "dev": "nodemon src/server.js",
     "db:setup": "node scripts/setup-database.js",
     "db:verify-browse": "node scripts/verify-browse.js",
+    "db:verify-requests": "node scripts/verify-requests.js",
     "test": "node --test"
   },
   "engines": {
