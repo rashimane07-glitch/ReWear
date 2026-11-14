@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { sendSuccess } = require('../utils/response');
 const { validateCreateListing, validateUpdateListing } = require('../validators/listing.validator');
+const { validateBrowseQuery } = require('../validators/browse.validator');
 const listingService = require('../services/listing.service');
 
 // POST /api/v1/listings   (JSON body; requires a valid token)
@@ -26,6 +27,14 @@ const uploadImages = asyncHandler(async (req, res) => {
   }
   const listing = await listingService.addImages(req.user.id, req.params.id, req.files);
   sendSuccess(res, { listing });
+});
+
+// GET /api/v1/listings   (PUBLIC: no token needed)
+// Browse + search + filter + sort + paginate the available listings.
+const browse = asyncHandler(async (req, res) => {
+  const query = validateBrowseQuery(req.query);
+  const { listings, meta } = await listingService.browseListings(query);
+  sendSuccess(res, { listings }, { meta });
 });
 
 // GET /api/v1/listings/mine   (requires a valid token)
@@ -53,4 +62,4 @@ const remove = asyncHandler(async (req, res) => {
   sendSuccess(res, { id, deleted: true });
 });
 
-module.exports = { create, uploadImages, listMine, getOne, update, remove };
+module.exports = { create, uploadImages, browse, listMine, getOne, update, remove };

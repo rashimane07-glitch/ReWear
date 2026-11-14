@@ -7,6 +7,7 @@ const listingController = require('../controllers/listing.controller');
 
 const router = express.Router();
 
+router.get('/', listingController.browse); //                                       GET    /api/v1/listings  (PUBLIC: browse, search, filter)
 router.post('/', authenticate, listingController.create); //                          POST /api/v1/listings
 router.get('/mine', authenticate, listingController.listMine); //                     GET    /api/v1/listings/mine  (must stay above /:id)
 router.get('/:id', authenticate, listingController.getOne); //                         GET    /api/v1/listings/:id

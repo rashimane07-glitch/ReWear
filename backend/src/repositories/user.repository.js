@@ -19,7 +19,7 @@
 const crypto = require('crypto');
 
 const ApiError = require('../utils/ApiError');
-const { run, getDoc, putDoc } = require('./base.repository');
+const { run, getDoc, putDoc, toApiError } = require('./base.repository');
 
 const USER_PREFIX = 'user:';
 const EMAIL_KEY_PREFIX = 'emailkey:';
@@ -119,6 +119,33 @@ async function updateUser(userDoc) {
   return result.ok;
 }
 
+// Looks up several users in ONE request (instead of one request per user).
+// Returns a Map of userId -> raw user document; unknown or deleted users are simply missing.
+// Callers must only use public fields (e.g. name): the documents contain the password hash.
+async function findUsersByIds(userIds) {
+  const ids = [...new Set(userIds)].filter((id) => typeof id === 'string' && SAFE_USER_ID.test(id));
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  let response;
+  try {
+    response = await run((client, db) =>
+      client.postAllDocs({ db, keys: ids.map(toDocId), includeDocs: true })
+    );
+  } catch (err) {
+    throw toApiError(err);
+  }
+
+  const users = new Map();
+  for (const row of (response.result && response.result.rows) || []) {
+    if (row.doc && row.doc.type === 'user' && typeof row.doc._id === 'string') {
+      users.set(row.doc._id.slice(USER_PREFIX.length), row.doc);
+    }
+  }
+  return users;
+}
+
 module.exports = {
   claimEmail,
   repointEmail,
@@ -126,5 +153,6 @@ module.exports = {
   insertUser,
   findUserById,
   findUserByEmail,
+  findUsersByIds,
   updateUser,
 };

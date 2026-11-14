@@ -36,6 +36,19 @@ const IMAGE_LIMITS = Object.freeze({
   MAX_FILE_BYTES: 5 * 1024 * 1024, // 5 MB per image
 });
 
+// Public browsing: GET /api/v1/listings
+const BROWSE_SORTS = ['newest', 'oldest', 'price_asc', 'price_desc'];
+
+const BROWSE = Object.freeze({
+  DEFAULT_SORT: 'newest',
+  DEFAULT_LIMIT: 12,
+  MAX_LIMIT: 50,
+  MAX_SEARCH_LENGTH: 100, // characters in ?q=
+  MAX_SEARCH_TERMS: 5, // words in ?q=
+  MAX_FILTER_VALUES: 10, // values in one comma-separated filter
+  MAX_COLOUR_LENGTH: 30,
+});
+
 module.exports = {
   LISTING_CATEGORIES,
   LISTING_SIZES,
@@ -44,4 +57,6 @@ module.exports = {
   LISTING_STATUS,
   PRICE_LIMITS,
   IMAGE_LIMITS,
+  BROWSE_SORTS,
+  BROWSE,
 };

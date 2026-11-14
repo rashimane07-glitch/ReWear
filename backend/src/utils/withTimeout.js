@@ -1,5 +1,5 @@
 // Stops waiting for a promise after `ms` milliseconds, so a slow external
-// service (Object Storage, ...) can never freeze a request forever.
+// service (IBM Cloudant, ...) can never freeze a request forever.
 
 function withTimeout(promise, ms) {
   let timer;

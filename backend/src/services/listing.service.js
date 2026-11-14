@@ -188,6 +188,32 @@ async function getMyListings(userId) {
   return Promise.all(docs.map((doc) => toListingResponse(doc, owner)));
 }
 
+// ---------- public browsing ----------
+
+// One page of the public feed: available, non-deleted listings only (also enforced again
+// below as a safety net). `query` is already validated (see browse.validator.js).
+// Owners are loaded with a single bulk request, and only their name is ever used.
+async function browseListings({ filters, searchTerms, sort, limit, cursor }) {
+  const { docs, bookmark } = await listingRepository.searchPublicListings({
+    filters,
+    searchTerms,
+    sort,
+    limit,
+    bookmark: cursor,
+  });
+
+  const publicDocs = docs.filter((doc) => !doc.isDeleted && doc.status === LISTING_STATUS.AVAILABLE);
+  const owners = await userRepository.findUsersByIds(publicDocs.map((doc) => doc.ownerId));
+  const listings = await Promise.all(
+    publicDocs.map((doc) => toListingResponse(doc, owners.get(doc.ownerId) || null))
+  );
+
+  // A full page may be followed by more; a short page is the last one. (If the last page
+  // is exactly full, the next request simply returns an empty list.)
+  const hasMore = docs.length >= limit && bookmark !== null;
+  return { listings, meta: { limit, count: listings.length, nextCursor: hasMore ? bookmark : null } };
+}
+
 // ---------- edit / delete (owner only, only while the listing is available) ----------
 
 function assertOwnerCanChange(listingDoc, userId, action) {
@@ -279,4 +305,4 @@ async function deleteListing(userId, listingId) {
   throw new ApiError(409, 'CONFLICT', 'The listing was changed at the same time. Please try again.');
 }
 
-module.exports = { createListing, addImages, getListing, getMyListings, updateListing, deleteListing };
+module.exports = { createListing, addImages, getListing, getMyListings, browseListings, updateListing, deleteListing };

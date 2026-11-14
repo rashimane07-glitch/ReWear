@@ -2,8 +2,9 @@
 // Internal fields (imageKeys, ownerId, acceptedRequestId, isDeleted, ...) are never
 // copied over; the owner is shown only as { id, name }.
 //
-// `images` is built by the service (it needs Object Storage to create the links):
-//   [ { id, url } ]   where url is a temporary signed link.
+// `images` is built by the service (it needs the storage service to create the links):
+//   [ { id, url } ]   where url is a public link such as
+//   <BACKEND_URL>/uploads/listings/<listingId>/<file>.jpg (the file is on the local disk).
 
 const LISTING_ID_PREFIX = 'listing:';
 

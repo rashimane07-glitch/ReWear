@@ -232,6 +232,18 @@ async function setupDatabase() {
   }
 }
 
+// The indexes the queries need (Cloudant answers sorted queries only when a matching index exists).
+// The two "listing-feed-*" indexes serve public browsing (GET /api/v1/listings):
+// fields are type, isDeleted, status (fixed by the selector) + the sort field.
+// Cloudant only uses a json index when the query mentions EVERY field of the index, so the
+// browse query adds one condition on the sort field (see SORTS in listing.repository.js).
+// A database created before Task 8 needs "npm run db:setup" again to get the two feed indexes.
+const INDEXES = [
+  { name: 'listing-by-owner', fields: ['type', 'ownerId', 'isDeleted'] }, // "my listings"
+  { name: 'listing-feed-created', fields: ['type', 'isDeleted', 'status', 'createdAt'] }, // sort=newest|oldest
+  { name: 'listing-feed-price', fields: ['type', 'isDeleted', 'status', 'price'] }, // sort=price_asc|price_desc
+];
+
 // Creates the indexes the queries need. Safe to run repeatedly (Cloudant answers
 // "exists" for an index that is already there); never deletes anything.
 async function ensureIndexes() {
@@ -242,17 +254,12 @@ async function ensureIndexes() {
   const { client, dbName } = prepared;
 
   try {
-    // "My listings": selector { type, ownerId, isDeleted }
-    await withTimeout(
-      client.postIndex({
-        db: dbName,
-        ddoc: 'listing-by-owner',
-        name: 'listing-by-owner',
-        type: 'json',
-        index: { fields: ['type', 'ownerId', 'isDeleted'] },
-      }),
-      REQUEST_TIMEOUT_MS
-    );
+    for (const { name, fields } of INDEXES) {
+      await withTimeout(
+        client.postIndex({ db: dbName, ddoc: name, name, type: 'json', index: { fields } }),
+        REQUEST_TIMEOUT_MS
+      );
+    }
     return { ok: true, status: STATUS.CONNECTED, message: 'Indexes are in place.', database: dbName };
   } catch (err) {
     return classifyError(err);

@@ -1,6 +1,6 @@
 // Reads the uploaded image files from a multipart/form-data request ("multer").
-// Files are kept in memory only briefly (max 5 files x 5 MB), then uploaded to
-// Object Storage by the service. Nothing is written to the server's disk.
+// Files are kept in memory only briefly (max 5 files x 5 MB); the service then saves them
+// to the local uploads folder (backend/uploads, see services/storage.service.js).
 //
 // Usage:  router.post('/:id/images', authenticate, uploadImages, controller.uploadImages);
 // (authenticate goes FIRST so anonymous visitors cannot make the server read uploads.)
