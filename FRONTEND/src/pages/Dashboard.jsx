@@ -11,8 +11,9 @@ import FormField, { inputClass } from '../components/FormField'
 import ImageWithFallback from '../components/ImageWithFallback'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
+import { API_MODE } from '../services/config'
 import { useWishlist } from '../context/WishlistContext'
-import { getMyListings, getRequests, getListings, deleteListing, updateRequestStatus } from '../services/api'
+import { getMyListings, getRequests, getListingsByIds, deleteListing, updateRequestStatus } from '../services/api'
 
 const TABS = [['overview', 'Overview', LayoutGrid], ['listings', 'My Listings', Shirt], ['requests', 'My Requests', Inbox], ['donations', 'My Donations', Gift], ['wishlist', 'Wishlist', Heart], ['profile', 'Profile', User]]
 const typeName = { sell: 'Purchase', exchange: 'Exchange', donate: 'Donation' }
@@ -56,9 +57,12 @@ export default function Dashboard() {
   const [editing, setEditing] = useState(false)
   const [profile, setProfile] = useState({ name: user.name, college: user.college, location: user.location || '' })
 
-  const refresh = useCallback(() => { getMyListings(user.id).then(setListings); getRequests(user.id).then(setReqs) }, [user.id])
+  const refresh = useCallback(() => {
+    getMyListings(user.id).then(setListings).catch((err) => { setListings([]); toast(err.message, 'error') })
+    getRequests(user.id).then(setReqs).catch(() => {})
+  }, [user.id])
   useEffect(() => { refresh() }, [refresh])
-  useEffect(() => { getListings().then((all) => setSaved(all.filter((l) => ids.includes(l.id)))) }, [ids])
+  useEffect(() => { getListingsByIds(ids).then(setSaved).catch(() => setSaved([])) }, [ids])
 
   const mine = (listings || []).filter((l) => l.listingType !== 'donate')
   const donations = (listings || []).filter((l) => l.listingType === 'donate')
@@ -71,8 +75,22 @@ export default function Dashboard() {
     toast({ accepted: `Request accepted. ${r.from.name.split(' ')[0]} can now see your contact details.`, rejected: 'Request rejected.', completed: 'Marked as completed.' }[status], status === 'rejected' ? 'error' : 'success')
     refresh()
   }
-  const confirmDelete = async () => { await deleteListing(toDelete.id); setToDelete(null); toast('Listing deleted.'); refresh() }
-  const saveProf = async (e) => { e.preventDefault(); await saveProfile(profile); setEditing(false); toast('Profile updated.') }
+  const confirmDelete = async () => {
+    try { await deleteListing(toDelete.id) } catch (err) { setToDelete(null); return toast(err.message, 'error') }
+    setToDelete(null); toast('Listing deleted.'); refresh()
+  }
+  const saveProf = async (e) => {
+    e.preventDefault()
+    // REAL mode: only the name is saved to the account (the backend stores no college / location). Those two stay on this device.
+    const deviceOnlyChanged = API_MODE && (profile.college !== (user.college || '') || profile.location !== (user.location || ''))
+    try {
+      await saveProfile(profile)
+      setEditing(false)
+      toast(deviceOnlyChanged ? 'Saved. College and location are kept on this device only (your account stores just your name).' : 'Profile updated.')
+    } catch (err) {
+      toast(err.message || 'Could not save your profile.', 'error')
+    }
+  }
   const empty = (title, text, to, cta) => <EmptyState title={title} text={text} action={to && <Link to={to}><Button>{cta}</Button></Link>} />
   const list = (items) => <ul className="flex flex-col gap-3">{items.map((i) => <ListingRow key={i.id} item={i} onDelete={setToDelete} />)}</ul>
 
@@ -148,7 +166,8 @@ export default function Dashboard() {
             {editing ? (
               <form onSubmit={saveProf} className="max-w-md flex flex-col gap-5">
                 {[['name', 'Full name'], ['college', 'College name'], ['location', 'Location']].map(([k, l]) => (
-                  <FormField key={k} id={k} label={l}><input id={k} required={k !== 'location'} value={profile[k]} onChange={(e) => setProfile({ ...profile, [k]: e.target.value })} className={inputClass()} /></FormField>))}
+                  <FormField key={k} id={k} label={l}><input id={k} required={k === 'name' || (k === 'college' && !API_MODE)} value={profile[k]} onChange={(e) => setProfile({ ...profile, [k]: e.target.value })} className={inputClass()} /></FormField>))}
+                {API_MODE && <p className="text-xs text-charcoal/60">Only your name is saved to your account. College and location are kept on this device only for now.</p>}
                 <div className="flex gap-3"><Button type="submit">Save changes</Button><Button type="button" variant="secondary" onClick={() => setEditing(false)}>Cancel</Button></div>
               </form>
             ) : (

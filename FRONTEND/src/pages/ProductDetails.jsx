@@ -10,7 +10,8 @@ import ProductCard from '../components/ProductCard'
 import ImageWithFallback from '../components/ImageWithFallback'
 import EmptyState from '../components/EmptyState'
 import { useToast } from '../components/Toast'
-import { getListings, getListingById, getRequests, submitRequest } from '../services/api'
+import { getSimilarListings, getListingById, getRequests, submitRequest } from '../services/api'
+import { API_MODE } from '../services/config'
 
 // Wording for each listing type
 const ACTIONS = {
@@ -29,7 +30,8 @@ export default function ProductDetails() {
   const [item, setItem] = useState(undefined) // undefined = loading, null = not found
   const [similar, setSimilar] = useState([])
   const [active, setActive] = useState(0)
-  const saved = has(Number(id))
+  const wid = API_MODE ? id : Number(id) // wishlist key: real listing ids are text (uuid), mock ids are numbers
+  const saved = has(wid)
   const [open, setOpen] = useState(false)
   const [sent, setSent] = useState(false)
   const [message, setMessage] = useState('')
@@ -39,7 +41,11 @@ export default function ProductDetails() {
     setItem(undefined); setActive(0); setSent(false); window.scrollTo(0, 0)
     getListingById(id).then((i) => {
       setItem(i)
-      if (i) getListings().then((all) => setSimilar(all.filter((x) => x.category === i.category && x.id !== i.id).slice(0, 4)))
+      if (i) getSimilarListings(i).then(setSimilar).catch(() => setSimilar([]))
+    }).catch((err) => {
+      // REAL mode: the backend shows a single listing to logged-in people only, so a guest is sent to log in first.
+      if (err.status === 401) return navigate('/login', { replace: true, state: { from: location.pathname } })
+      setItem(null); toast(err.message, 'error')
     })
   }, [id])
 
@@ -58,7 +64,7 @@ export default function ProductDetails() {
     setSending(false); setOpen(false); setSent(true); setMessage('')
     toast(`${a.sent}. You'll see the owner's reply under My Requests.`)
   }
-  const details = [['Size', item.size], ['Category', item.category], ['Condition', item.condition]]
+  const details = [['Size', item.size], ['Category', item.category], ['Condition', item.condition], ...(item.colour ? [['Colour', item.colour]] : [])]
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">
@@ -81,18 +87,19 @@ export default function ProductDetails() {
           <span className="inline-block bg-blush text-plum text-xs tracking-wider px-3 py-1 mb-4">{{ sell: 'FOR SALE', exchange: 'FOR EXCHANGE', donate: 'FREE DONATION' }[item.listingType]}</span>
           <h1 className="text-4xl md:text-5xl">{item.name}</h1>
           <p className="text-2xl mt-3 font-medium">
-            {item.listingType === 'sell' && <>₹{item.price.toLocaleString('en-IN')} <s className="text-base text-charcoal/40 font-normal ml-2">₹{item.originalPrice.toLocaleString('en-IN')}</s></>}
-            {item.listingType === 'exchange' && <span className="text-rose text-xl">Looking for: {item.lookingFor}</span>}
+            {item.listingType === 'sell' && <>₹{item.price.toLocaleString('en-IN')} {item.originalPrice && <s className="text-base text-charcoal/40 font-normal ml-2">₹{item.originalPrice.toLocaleString('en-IN')}</s>}</>}
+            {item.listingType === 'exchange' && <span className="text-rose text-xl">Looking for: {item.lookingFor || 'Open to offers'}</span>}
             {item.listingType === 'donate' && <span className="text-rose text-xl">Free</span>}
           </p>
           <dl className="grid grid-cols-3 gap-4 mt-8 border-y border-plum/15 py-5">
             {details.map(([k, v]) => <div key={k}><dt className="text-xs tracking-wider text-charcoal/60 uppercase">{k}</dt><dd className="mt-1">{v}</dd></div>)}
           </dl>
-          <p className="mt-6 text-charcoal/80 leading-relaxed">{item.description}</p>
+          <p className="mt-6 text-charcoal/80 leading-relaxed whitespace-pre-line">{item.description}</p>
+          {item.location && <p className="mt-3 text-sm text-charcoal/70">Pickup location: {item.location}</p>}
 
           <div className="mt-8 flex gap-3">
             <Button className="flex-1" disabled={sent || mine} onClick={() => (user ? setOpen(true) : navigate('/login', { state: { from: location.pathname } }))}>{mine ? 'This is your listing' : sent ? 'Request pending' : a.button}</Button>
-            <button onClick={() => toggle(Number(id))} aria-pressed={saved} className="border border-plum text-plum px-4 flex items-center gap-2 text-sm">
+            <button onClick={() => toggle(wid)} aria-pressed={saved} className="border border-plum text-plum px-4 flex items-center gap-2 text-sm">
               <Heart size={16} fill={saved ? '#C58B91' : 'none'} />{saved ? 'Saved' : 'Save'}
             </button>
           </div>

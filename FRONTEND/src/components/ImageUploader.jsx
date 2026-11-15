@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { Camera, X, RefreshCw } from 'lucide-react'
+import { OPTIONS } from '../services/listingMapper'
 
 const TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_MB = 10
+const MAX_MB = OPTIONS.maxImageMb // the real backend accepts 5 MB per photo (demo mode: 10)
 const MAX_IMAGES = 5
 
 // images: [{ id, file, url }]. The parent owns the list; we call onChange with the new list.

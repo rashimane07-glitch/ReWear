@@ -1,35 +1,88 @@
 // One place for all backend calls. React never talks to IBM Cloudant directly.
 // While VITE_API_URL is empty we return MOCK data; nothing is stored anywhere.
 import { products, categories, impactStats } from '../data/mockData'
+import { get, post, del, getPage, ApiError } from './http'
+import { API_MODE } from './config'
+import { fromBackend, toCreatePayload, toBrowseQuery } from './listingMapper'
 
-const API_URL = import.meta.env.VITE_API_URL
+// REAL mode = VITE_API_URL is set (see config.js). Task 11, phase 2: listings, photos and "my listings" use the
+// backend (through http.js + listingMapper.js). Requests are NOT connected yet (phase 3): in REAL mode they are
+// safe stand-ins (see getRequests / submitRequest / updateRequestStatus below), never fake successes.
+const API_URL = API_MODE
 const mock = (data) => new Promise((resolve) => setTimeout(() => resolve(data), 150))
+const notConnected = (what) => Promise.reject(new Error(`${what} is not connected to the server yet (Task 11, phase 3). Use demo mode (empty VITE_API_URL) to try it.`))
 
-export const getTrendingProducts = () => (API_URL ? fetch(`${API_URL}/listings?sort=trending`).then((r) => r.json()) : mock(listings.filter((l) => l.status === 'active').slice(0, 4).map((l) => ({ ...l, image: l.images[0] }))))
-export const getCategories = () => mock(categories)
+// REAL mode: one page of the public browse (no login needed), mapped to the shape the screens use.
+// params: { query, sort: 'newest'|'low'|'high', filters: { category, size, condition, type }, limit, cursor, listingType }.
+// Returns { listings, nextCursor } (nextCursor is null on the last page). `options.signal` cancels the call.
+export const browseListings = (params, options = {}) =>
+  getPage(`/listings?${toBrowseQuery(params)}`, { auth: false, signal: options.signal })
+    .then(({ data, meta }) => ({ listings: data.listings.map(fromBackend), nextCursor: (meta && meta.nextCursor) || null }))
+
+export const getTrendingProducts = () => (API_URL ? browseListings({ limit: 4 }).then(({ listings }) => listings.map((l) => ({ ...l, image: l.images[0] }))) : mock(listings.filter((l) => l.status === 'active').slice(0, 4).map((l) => ({ ...l, image: l.images[0] }))))
+// REAL mode: Home category tiles named like the backend's categories (the demo tiles use names the backend does not have).
+// The pictures are the existing placeholder photos, reused in order.
+const REAL_CATEGORY_TILES = [
+  { name: 'Tops', image: '/images/cat-western.jpg' }, { name: 'Ethnic wear', image: '/images/cat-ethnic.jpg' },
+  { name: 'Bottoms', image: '/images/cat-casual.jpg' }, { name: 'Outerwear', image: '/images/cat-formal.jpg' },
+  { name: 'Accessories', image: '/images/cat-accessories.jpg' }, { name: 'Activewear', image: '/images/cat-men.jpg' },
+]
+export const getCategories = () => mock(API_URL ? REAL_CATEGORY_TILES : categories)
 export const getImpactStats = () => mock(impactStats)
 
 // ---- Phase 2 ----
 import { listings } from '../data/listings'
-export const getListings = () => (API_URL ? fetch(`${API_URL}/listings`).then((r) => r.json()) : mock([...listings]))
+// REAL mode: the newest listings (up to 50, one page). params can add { listingType: 'exchange' } etc.
+export const getListings = (params = {}) => (API_URL ? browseListings({ limit: 50, ...params }).then((r) => r.listings) : mock([...listings]))
+// REAL mode: needs a login (the backend's GET /listings/:id does). A missing listing gives null; a guest gets an
+// ApiError with status 401 that the page turns into "please log in".
 export const getListingById = (id) =>
-  API_URL ? fetch(`${API_URL}/listings/${id}`).then((r) => r.json()) : mock(listings.find((l) => String(l.id) === String(id)) || null)
+  API_URL
+    ? get(`/listings/${encodeURIComponent(id)}`).then((d) => fromBackend(d.listing)).catch((e) => { if (e instanceof ApiError && e.status === 404) return null; throw e })
+    : mock(listings.find((l) => String(l.id) === String(id)) || null)
+// Up to 4 other listings of the same category ("You may also like").
+export const getSimilarListings = (item) =>
+  API_URL
+    ? browseListings({ filters: { category: [item.category] }, limit: 5 }).then((r) => r.listings.filter((l) => l.id !== item.id).slice(0, 4))
+    : mock(listings.filter((l) => l.category === item.category && l.id !== item.id).slice(0, 4))
+// The saved (wishlist) listings. REAL mode reads them one by one (login needed); ones that no longer exist are skipped.
+export const getListingsByIds = (ids) =>
+  API_URL ? Promise.all(ids.map((id) => getListingById(id).catch(() => null))).then((all) => all.filter(Boolean)) : mock(listings.filter((l) => ids.includes(l.id)))
 // MOCK: pretends to send a request. The seller is not actually notified until the backend exists.
+// REAL mode: NOT connected yet (phase 3). It refuses with a clear message instead of pretending it worked.
 export const submitRequest = (listingId, message, user, offeredListingId) =>
   API_URL
-    ? fetch(`${API_URL}/requests`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ listingId, message, offeredListingId }) }).then((r) => r.json())
+    ? notConnected('Sending requests')
     : mock().then(() => addRequest(listingId, message, user, offeredListingId))
 
 // ---- Phase 3 ----
 // MOCK: adds the listing to memory for this browser session only (lost on refresh). Nothing is uploaded or stored.
-// Real version: POST multipart form data to the Express API, which stores images in IBM Cloud Object Storage.
-export const createListing = (data) => {
-  if (API_URL) {
-    const body = new FormData()
-    Object.entries(data).forEach(([k, v]) => k !== 'images' && k !== 'owner' && v !== undefined && body.append(k, v))
-    data.images.forEach((img) => body.append('images', img.file))
-    return fetch(`${API_URL}/listings`, { method: 'POST', body }).then((r) => r.json())
+// REAL mode: two backend calls, because the backend takes the details and the photos separately:
+//   1) POST /listings (JSON) creates the listing, 2) POST /listings/:id/images (multipart, field "images") adds the photos.
+// If the photos fail, the listing that was just created is KEPT (it is not deleted again): the error thrown has code
+// 'PHOTOS_NOT_UPLOADED' and the new listing's id in `error.listingId` (and in the message), so the screen can point to it.
+async function createRealListing(data) {
+  const created = (await post('/listings', toCreatePayload(data))).listing
+  const files = (data.images || []).map((image) => image.file).filter(Boolean)
+  if (files.length === 0) return fromBackend(created)
+
+  const form = new FormData()
+  files.forEach((file) => form.append('images', file))
+  try {
+    const uploaded = await post(`/listings/${created.id}/images`, form)
+    return fromBackend((uploaded && uploaded.listing) || created)
+  } catch (err) {
+    const why = (err && err.message) || 'unknown problem'
+    const failure = new ApiError(
+      `Your listing was saved (listing ID ${created.id}), but its photos could not be uploaded: ${why} Find it under My Listings (a donation: My Donations); delete it there and list it again with its photos. Do not submit this form again, or a second listing is created.`,
+      { status: err && err.status, code: 'PHOTOS_NOT_UPLOADED', details: { listingId: created.id } }
+    )
+    failure.listingId = created.id // the saved listing, so the screen can identify it (also in error.details.listingId)
+    throw failure
   }
+}
+export const createListing = (data) => {
+  if (API_URL) return createRealListing(data)
   const listing = {
     ...data, id: Date.now(), listedAt: Date.now(), originalPrice: undefined,
     images: data.images.map((i) => i.url), status: 'active', ownerId: data.owner?.id,
@@ -41,9 +94,6 @@ export const createListing = (data) => {
 
 // ---- Phase 4: ownership, requests, dashboard ----
 // MOCK data lives in memory and resets on refresh. Real versions call the Express API with the user's JWT.
-import { getToken } from './auth'
-const call = (path, opts = {}) =>
-  fetch(`${API_URL}${path}`, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` } }).then((r) => r.json())
 
 ;[1, 3, 4].forEach((id) => { const l = listings.find((x) => x.id === id); if (l) l.ownerId = 'demo' }) // the demo account owns these
 listings.forEach((l) => { l.status = l.status || 'active' })
@@ -73,16 +123,17 @@ const withListing = (r) => {
   return { ...r, listing, offered: listings.find((l) => l.id === r.offeredListingId), ownerContact: shared && listing ? `${listing.seller.name.split(' ')[0].toLowerCase()}@campus.example` : null }
 }
 
-export const getMyListings = (userId) => (API_URL ? call('/listings/mine') : mock(listings.filter((l) => l.ownerId === userId)))
+export const getMyListings = (userId) => (API_URL ? get('/listings/mine').then((d) => d.listings.map(fromBackend)) : mock(listings.filter((l) => l.ownerId === userId)))
 export const deleteListing = (id) => {
-  if (API_URL) return call(`/listings/${id}`, { method: 'DELETE' })
+  if (API_URL) return del(`/listings/${encodeURIComponent(id)}`)
   const i = listings.findIndex((l) => l.id === id); if (i > -1) listings.splice(i, 1)
   return mock({ ok: true })
 }
+// REAL mode: requests are NOT connected yet (phase 3), so this returns empty lists (the screens then show "no requests").
 export const getRequests = (userId) =>
-  API_URL ? call('/requests') : mock({ incoming: requests.filter((r) => r.toUserId === userId).map(withListing), sent: requests.filter((r) => r.from.id === userId).map(withListing) })
+  API_URL ? mock({ incoming: [], sent: [] }) : mock({ incoming: requests.filter((r) => r.toUserId === userId).map(withListing), sent: requests.filter((r) => r.from.id === userId).map(withListing) })
 export const updateRequestStatus = (id, status) => {
-  if (API_URL) return call(`/requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) })
+  if (API_URL) return notConnected('Answering requests')
   const r = requests.find((x) => x.id === id); r.status = status
   // Accepting reserves the item (and the piece offered in exchange) and declines other pending requests for it.
   const next = status === 'accepted' ? 'reserved' : status === 'completed' ? 'completed' : null
