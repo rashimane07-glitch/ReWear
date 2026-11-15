@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import MyListings from "./pages/MyListings";
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="/explore" element={<Explore />} />
           <Route path="/exchange" element={<Exchange />} />
           <Route path="/product/:id" element={<ProductDetails />} />
+          <Route path="/my-listings" element={<MyListings />} />
           <Route path="/about" element={<About />} />
           <Route path="/sell" element={<Protected><Sell /></Protected>} />
           <Route path="/donate" element={<Protected><Donate /></Protected>} />
