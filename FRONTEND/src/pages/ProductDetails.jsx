@@ -52,6 +52,7 @@ export default function ProductDetails() {
 
   const a = ACTIONS[item.listingType]
   const mine = user && item.ownerId === user.id
+  const unavailable = item.status && item.status !== 'active'
   const send = async (e) => {
     e.preventDefault(); setSending(true)
     try { await submitRequest(item.id, message, user) } catch (err) { setSending(false); return toast(err.message, 'error') }
@@ -91,7 +92,7 @@ export default function ProductDetails() {
           <p className="mt-6 text-charcoal/80 leading-relaxed">{item.description}</p>
 
           <div className="mt-8 flex gap-3">
-            <Button className="flex-1" disabled={sent || mine} onClick={() => (user ? setOpen(true) : navigate('/login', { state: { from: location.pathname } }))}>{mine ? 'This is your listing' : sent ? 'Request pending' : a.button}</Button>
+            <Button className="flex-1" disabled={sent || mine || unavailable} onClick={() => (user ? setOpen(true) : navigate('/login', { state: { from: location.pathname } }))}>{mine ? 'This is your listing' : unavailable ?'No longer available': sent ? 'Request pending' : a.button}</Button>
             <button onClick={() => toggle(Number(id))} aria-pressed={saved} className="border border-plum text-plum px-4 flex items-center gap-2 text-sm">
               <Heart size={16} fill={saved ? '#C58B91' : 'none'} />{saved ? 'Saved' : 'Save'}
             </button>
