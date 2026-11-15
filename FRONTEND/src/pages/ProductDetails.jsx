@@ -50,7 +50,7 @@ export default function ProductDetails() {
   }, [id])
 
   useEffect(() => {
-    if (user) getRequests(user.id).then(({ sent }) => setSent(sent.some((r) => r.listingId === Number(id) && ['pending', 'accepted'].includes(r.status))))
+    if (user) getRequests(user.id).then(({ sent }) => setSent(sent.some((r) => String(r.listingId) === String(id) && ['pending', 'accepted'].includes(r.status)))).catch(() => {})
   }, [id, user])
 
   if (item === undefined) return <div className="max-w-7xl mx-auto px-6 py-24"><div className="h-96 bg-blush/60 animate-pulse" /></div>
@@ -58,9 +58,16 @@ export default function ProductDetails() {
 
   const a = ACTIONS[item.listingType]
   const mine = user && item.ownerId === user.id
+  const unavailable = API_MODE && item.status !== 'active' // reserved or completed: the backend refuses new requests
   const send = async (e) => {
-    e.preventDefault(); setSending(true)
-    try { await submitRequest(item.id, message, user) } catch (err) { setSending(false); return toast(err.message, 'error') }
+    e.preventDefault()
+    if (sending) return // one click = one request
+    setSending(true)
+    try { await submitRequest(item.id, message, user) } catch (err) {
+      setSending(false)
+      if (err.code === 'DUPLICATE_REQUEST') { setSent(true); setOpen(false) } // already sent earlier
+      return toast(err.message, 'error')
+    }
     setSending(false); setOpen(false); setSent(true); setMessage('')
     toast(`${a.sent}. You'll see the owner's reply under My Requests.`)
   }
@@ -98,7 +105,7 @@ export default function ProductDetails() {
           {item.location && <p className="mt-3 text-sm text-charcoal/70">Pickup location: {item.location}</p>}
 
           <div className="mt-8 flex gap-3">
-            <Button className="flex-1" disabled={sent || mine} onClick={() => (user ? setOpen(true) : navigate('/login', { state: { from: location.pathname } }))}>{mine ? 'This is your listing' : sent ? 'Request pending' : a.button}</Button>
+            <Button className="flex-1" disabled={sent || mine || unavailable} onClick={() => (user ? setOpen(true) : navigate('/login', { state: { from: location.pathname } }))}>{mine ? 'This is your listing' : unavailable ? 'No longer available' : sent ? 'Request pending' : a.button}</Button>
             <button onClick={() => toggle(wid)} aria-pressed={saved} className="border border-plum text-plum px-4 flex items-center gap-2 text-sm">
               <Heart size={16} fill={saved ? '#C58B91' : 'none'} />{saved ? 'Saved' : 'Save'}
             </button>

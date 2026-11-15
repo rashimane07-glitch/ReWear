@@ -4,13 +4,14 @@ import { products, categories, impactStats } from '../data/mockData'
 import { get, post, del, getPage, ApiError } from './http'
 import { API_MODE } from './config'
 import { fromBackend, toCreatePayload, toBrowseQuery } from './listingMapper'
+import { fromBackendRequest, contactText, toOfferedItem, REQUEST_ACTIONS } from './requestMapper'
 
 // REAL mode = VITE_API_URL is set (see config.js). Task 11, phase 2: listings, photos and "my listings" use the
-// backend (through http.js + listingMapper.js). Requests are NOT connected yet (phase 3): in REAL mode they are
-// safe stand-ins (see getRequests / submitRequest / updateRequestStatus below), never fake successes.
+// backend (through http.js + listingMapper.js). Phase 3: requests, exchange offers and the accept / decline / cancel /
+// complete actions use the backend too (http.js + requestMapper.js). A failed real call is thrown to the screen; it is
+// NEVER answered with demo data.
 const API_URL = API_MODE
 const mock = (data) => new Promise((resolve) => setTimeout(() => resolve(data), 150))
-const notConnected = (what) => Promise.reject(new Error(`${what} is not connected to the server yet (Task 11, phase 3). Use demo mode (empty VITE_API_URL) to try it.`))
 
 // REAL mode: one page of the public browse (no login needed), mapped to the shape the screens use.
 // params: { query, sort: 'newest'|'low'|'high', filters: { category, size, condition, type }, limit, cursor, listingType }.
@@ -48,11 +49,19 @@ export const getSimilarListings = (item) =>
 // The saved (wishlist) listings. REAL mode reads them one by one (login needed); ones that no longer exist are skipped.
 export const getListingsByIds = (ids) =>
   API_URL ? Promise.all(ids.map((id) => getListingById(id).catch(() => null))).then((all) => all.filter(Boolean)) : mock(listings.filter((l) => ids.includes(l.id)))
-// MOCK: pretends to send a request. The seller is not actually notified until the backend exists.
-// REAL mode: NOT connected yet (phase 3). It refuses with a clear message instead of pretending it worked.
-export const submitRequest = (listingId, message, user, offeredListingId) =>
+// MOCK: pretends to send a request. The seller is not actually notified in demo mode.
+// REAL mode: POST /requests { listingId, message?, offeredItem? }. For an exchange, `offeredListing` (the piece the person picked)
+// is turned into the backend's offeredItem { title, description } (the backend has no "offeredListingId"). Returns the new request.
+async function sendRealRequest(listingId, message, offeredListing) {
+  const body = { listingId: String(listingId) }
+  const text = String(message || '').trim()
+  if (text) body.message = text
+  if (offeredListing) body.offeredItem = toOfferedItem(offeredListing)
+  return fromBackendRequest((await post('/requests', body)).request)
+}
+export const submitRequest = (listingId, message, user, offeredListingId, offeredListing) =>
   API_URL
-    ? notConnected('Sending requests')
+    ? sendRealRequest(listingId, message, offeredListing)
     : mock().then(() => addRequest(listingId, message, user, offeredListingId))
 
 // ---- Phase 3 ----
@@ -129,12 +138,31 @@ export const deleteListing = (id) => {
   const i = listings.findIndex((l) => l.id === id); if (i > -1) listings.splice(i, 1)
   return mock({ ok: true })
 }
-// REAL mode: requests are NOT connected yet (phase 3), so this returns empty lists (the screens then show "no requests").
+// REAL mode: GET /requests/received (I am the owner) + GET /requests/sent (I asked), both mapped for the screens.
+// CONTACT PRIVACY: the lists never carry a contact. For each ACCEPTED request I SENT, the single-request view
+// (GET /requests/:id) is read, because only that view can contain the owner's contact, and only while the backend
+// itself allows it (accepted + the listing reserved for that request). If it returns none, none is shown.
+async function getRealRequests() {
+  const [received, sent] = await Promise.all([get('/requests/received'), get('/requests/sent')])
+  const incoming = received.requests.map(fromBackendRequest)
+  const outgoing = sent.requests.map(fromBackendRequest)
+  await Promise.all(outgoing.filter((r) => r.status === 'accepted').map(async (r) => {
+    try { r.ownerContact = contactText((await get(`/requests/${encodeURIComponent(r.id)}`)).request.ownerContact) } catch { r.ownerContact = null }
+  }))
+  return { incoming, sent: outgoing }
+}
 export const getRequests = (userId) =>
-  API_URL ? mock({ incoming: [], sent: [] }) : mock({ incoming: requests.filter((r) => r.toUserId === userId).map(withListing), sent: requests.filter((r) => r.from.id === userId).map(withListing) })
+  API_URL ? getRealRequests() : mock({ incoming: requests.filter((r) => r.toUserId === userId).map(withListing), sent: requests.filter((r) => r.from.id === userId).map(withListing) })
+// status: 'accepted' | 'rejected' (= decline) | 'cancelled' | 'completed'. REAL mode: POST /requests/:id/<accept|decline|cancel|complete>.
 export const updateRequestStatus = (id, status) => {
-  if (API_URL) return notConnected('Answering requests')
-  const r = requests.find((x) => x.id === id); r.status = status
+  if (API_URL) {
+    const action = REQUEST_ACTIONS[status]
+    if (!action) return Promise.reject(new Error('That action is not available.'))
+    return post(`/requests/${encodeURIComponent(id)}/${action}`).then((d) => fromBackendRequest(d.request))
+  }
+  const r = requests.find((x) => x.id === id); const was = r.status; r.status = status
+  // Calling off an accepted request puts the item (and the piece offered in exchange) back on the market.
+  if (status === 'cancelled' && was === 'accepted') [r.listingId, r.offeredListingId].forEach((lid) => { const l = listings.find((x) => x.id === lid); if (l) l.status = 'active' })
   // Accepting reserves the item (and the piece offered in exchange) and declines other pending requests for it.
   const next = status === 'accepted' ? 'reserved' : status === 'completed' ? 'completed' : null
   if (next) [r.listingId, r.offeredListingId].forEach((lid) => { const l = listings.find((x) => x.id === lid); if (l) l.status = next })
