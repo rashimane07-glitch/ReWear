@@ -9,7 +9,10 @@
     "dev": "nodemon src/server.js",
     "db:setup": "node scripts/setup-database.js",
     "db:verify-browse": "node scripts/verify-browse.js",
+    "admin:create": "node scripts/make-admin.js",
+    "admin:demote": "node scripts/make-admin.js --demote",
     "db:verify-requests": "node scripts/verify-requests.js",
+    "db:verify-reports": "node scripts/verify-reports.js",
     "test": "node --test"
   },
   "engines": {

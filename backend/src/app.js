@@ -10,6 +10,8 @@ const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const listingRoutes = require('./routes/listing.routes');
 const requestRoutes = require('./routes/request.routes');
+const adminRoutes = require('./routes/admin.routes');
+const reportRoutes = require('./routes/report.routes');
 
 const app = express();
 
@@ -95,6 +97,12 @@ app.use('/api/v1/listings', listingRoutes);
 
 // --- Requests: ask for a listing, accept / decline / cancel / complete (all need a login) ---
 app.use('/api/v1/requests', requestRoutes);
+
+// --- Administration: see and remove listings, review reports (administrators only) ---
+app.use('/api/v1/admin', adminRoutes);
+
+// --- Reports: a student reports a listing or a user and reads their own reports (login needed) ---
+app.use('/api/v1/reports', reportRoutes);
 
 // --- 404 handler: no route matched ---
 app.use((req, res) => {

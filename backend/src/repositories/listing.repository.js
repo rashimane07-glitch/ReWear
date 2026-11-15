@@ -239,10 +239,46 @@ async function findListingsByIds(listingIds) {
   return listings;
 }
 
+// ---------- administration ----------
+
+// One page of listings for the admin overview (raw documents), newest first. Uses the
+// "listing-admin-created" index (type, isDeleted, createdAt); the optional status filter is
+// applied by Cloudant on top of it. `state`: null = every listing that is not removed,
+// 'available' | 'reserved' | 'completed' = that status, 'removed' = soft-deleted listings.
+// Same cursor rules as the public feed (a cursor only works for the query that made it).
+async function findListingsForAdmin({ state, limit, bookmark }) {
+  const selector = { type: 'listing', isDeleted: state === 'removed', createdAt: { $exists: true } };
+  if (state && state !== 'removed') {
+    selector.status = state;
+  }
+  const sortSpec = ['type', 'isDeleted', 'createdAt'].map((name) => ({ [name]: 'desc' }));
+
+  const fingerprint = queryFingerprint(selector, sortSpec);
+  const params = { selector, sort: sortSpec, limit };
+  if (bookmark) {
+    params.bookmark = bookmarkFromCursor(bookmark, fingerprint);
+  }
+
+  let response;
+  try {
+    response = await run((client, db) => client.postFind({ db, ...params }));
+  } catch (err) {
+    throw translateFindError(err, Boolean(bookmark));
+  }
+
+  const result = response.result || {};
+  const hasBookmark = typeof result.bookmark === 'string' && result.bookmark !== '' && result.bookmark !== 'nil';
+  return {
+    docs: result.docs || [],
+    bookmark: hasBookmark ? `${fingerprint}${result.bookmark}` : null,
+  };
+}
+
 module.exports = {
   insertListing,
   findListingById,
   findListingsByIds,
+  findListingsForAdmin,
   updateListing,
   findListingsByOwner,
   buildPublicSelector,

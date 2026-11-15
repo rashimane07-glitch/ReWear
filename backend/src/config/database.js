@@ -246,6 +246,11 @@ const INDEXES = [
   { name: 'request-by-owner', fields: ['type', 'ownerId'] }, // requests received
   { name: 'request-by-requester', fields: ['type', 'requesterId'] }, // requests sent
   { name: 'request-by-listing', fields: ['type', 'listingId', 'status'] }, // pending requests of one listing
+  // Administration (Task 10): the admin listing overview, newest first.
+  { name: 'listing-admin-created', fields: ['type', 'isDeleted', 'createdAt'] },
+  // Reports (Task 10): plain equality lookups, no sort (the lists are sorted in the code).
+  { name: 'report-by-reporter', fields: ['type', 'reporterId'] }, // a student's own reports, and their open count
+  { name: 'report-by-status', fields: ['type', 'status'] }, // the admin queue (one query per status)
 ];
 
 // Creates the indexes the queries need. Safe to run repeatedly (Cloudant answers

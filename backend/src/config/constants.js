@@ -69,6 +69,33 @@ const REQUEST_LIMITS = Object.freeze({
   MAX_LIST_RESULTS: 200, // requests returned by one list call
 });
 
+// Administration (Task 10). Admin accounts are never created through the API: a person with
+// access to the server promotes an existing account with "npm run admin:create -- <email>".
+const ROLES = Object.freeze({ STUDENT: 'student', ADMIN: 'admin' });
+
+const ADMIN = Object.freeze({
+  MAX_NOTE_LENGTH: 500, // admin note on a removal / report decision
+  DEFAULT_LIST_LIMIT: 20,
+  MAX_LIST_LIMIT: 50,
+});
+
+// ?state= on GET /admin/listings. Without it: every listing that has not been removed.
+const ADMIN_LISTING_STATES = ['available', 'reserved', 'completed', 'removed'];
+
+// Reports (Task 10). A student reports a listing or a user; an administrator decides.
+const REPORT_TARGET_TYPES = ['listing', 'user'];
+const REPORT_REASONS = ['spam', 'inappropriate', 'misleading', 'prohibited_item', 'harassment', 'other'];
+const REPORT_STATUS = Object.freeze({ OPEN: 'open', RESOLVED: 'resolved', DISMISSED: 'dismissed' });
+const REPORT_STATUSES = Object.values(REPORT_STATUS);
+// What an administrator can do when resolving a report. 'none' = looked at and handled, no automatic
+// change; 'remove_listing' = also remove the reported listing (listing reports only).
+const REPORT_RESOLUTION_ACTIONS = ['none', 'remove_listing'];
+const REPORT_LIMITS = Object.freeze({
+  MAX_DETAILS_LENGTH: 500,
+  MAX_OPEN_PER_REPORTER: 10, // stops one account from flooding the admin queue
+  MAX_LIST_RESULTS: 200, // reports returned by one list call
+});
+
 module.exports = {
   LISTING_CATEGORIES,
   LISTING_SIZES,
@@ -82,4 +109,13 @@ module.exports = {
   REQUEST_STATUS,
   REQUEST_STATUSES,
   REQUEST_LIMITS,
+  ROLES,
+  ADMIN,
+  ADMIN_LISTING_STATES,
+  REPORT_TARGET_TYPES,
+  REPORT_REASONS,
+  REPORT_STATUS,
+  REPORT_STATUSES,
+  REPORT_RESOLUTION_ACTIONS,
+  REPORT_LIMITS,
 };

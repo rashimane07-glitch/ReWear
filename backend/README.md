@@ -7,9 +7,11 @@ REST API for **ReWear**, a student marketplace to sell, exchange or donate pre-o
   The project does **not** use IBM Cloud Object Storage (it must stay free). Cloudant stores only the image *keys*, never image bytes.
 - **Frontend:** a separate React app (not in this folder). It talks to this API only.
 
-> Status: tasks 1-8 (setup, auth, profile, listing create/edit/delete, image upload, browse/search/filters) are done.
-> Task 9 (requests, exchange and contact privacy) is implemented and described in "Requests, exchange and contact privacy" below;
+> Status: tasks 1-9 (setup, auth, profile, listing create/edit/delete, image upload, browse/search/filters, requests/exchange/contact privacy) are done.
+> Task 9 (requests, exchange and contact privacy) is described in "Requests, exchange and contact privacy" below;
 > see `TASK9_PROGRESS.md` for what has and has not been verified.
+> Task 10 (reports and administration) is implemented and described in "Reports and administration" below;
+> see `TASK10_PROGRESS.md` for what has and has not been verified.
 
 ## Quick start
 
@@ -31,9 +33,12 @@ Environment variables (see `.env.example` for explanations): `PORT`, `NODE_ENV`,
 |---|---|
 | `npm run dev` / `npm start` | Start the API |
 | `npm test` | Run all automated tests (no internet, no credentials needed) |
-| `npm run db:setup` | Create the database (if missing) and the indexes. **Run again after updating to Task 8** (the two `listing-feed-*` indexes) **and to Task 9** (the three `request-by-*` indexes) |
+| `npm run db:setup` | Create the database (if missing) and the indexes. **Run again after updating to Task 8** (the two `listing-feed-*` indexes), **to Task 9** (the three `request-by-*` indexes) **and to Task 10** (`listing-admin-created` and the two `report-by-*` indexes) |
 | `npm run db:verify-browse` | Read-only check of the browse queries against your **real** Cloudant (see "What is verified") |
 | `npm run db:verify-requests` | Read-only check of the request **indexes and queries** against your **real** Cloudant (see "What is verified"). It never writes, and it does **not** test the request workflow (send, accept, decline, cancel, complete) |
+| `npm run db:verify-reports` | Read-only check of the report and admin-overview **indexes and queries** against your **real** Cloudant (see "What is verified"). It never writes, and it does **not** test sending or deciding reports |
+| `npm run admin:create -- <email>` | Makes an **existing** account an administrator (see "Reports and administration"). Run it yourself, on the machine that has the `.env` file |
+| `npm run admin:demote -- <email>` | Makes an administrator a normal student again |
 
 ## API overview
 
@@ -57,6 +62,11 @@ Base URL: `/api/v1`. Every answer is `{ "success": true, "data": ..., "meta": ..
 | `GET /requests/:id` | yes (owner or requester) | One request; the only place a contact detail can appear |
 | `POST /requests/:id/accept`, `/decline`, `/complete` | yes (owner) | Answer a request / mark the hand-over done |
 | `POST /requests/:id/cancel` | yes (requester, or either after accept) | Withdraw a pending request / call off an accepted one |
+| `POST /reports` | yes | Report a listing or a user (Task 10) |
+| `GET /reports/mine` | yes | The reports I sent (optional `?status=`) |
+| `GET /admin/listings`, `POST /admin/listings/:id/remove` | **admin** | See all listings (any status) / remove one |
+| `GET /admin/reports`, `GET /admin/reports/:id` | **admin** | The report queue / one report |
+| `POST /admin/reports/:id/dismiss`, `/resolve` | **admin** | Decide a report |
 
 Send the token as `Authorization: Bearer <token>`.
 
@@ -222,6 +232,66 @@ they come from the login token and from the server. A response looks like:
 - **Recovery:** if an accept fails half-way and leaves a listing reserved for a request that is still `pending`, declining or withdrawing that request puts the listing back on the market
   (a failed recovery is answered with `409 CONFLICT`, the request stays pending, and the action can be repeated). A listing reserved for another request, or already completed, is never reopened this way.
 
+## Reports and administration (Task 10)
+
+### Administrators
+
+- An administrator is an ordinary account whose user document has `role: "admin"`. **There is no API to become an administrator** (a `role` sent at registration is ignored), so nobody can promote themselves.
+  You promote an account that already exists, on the machine that has your `.env` file:
+  `npm run admin:create -- student@example.com` (and `npm run admin:demote -- student@example.com` to undo it). It changes only that account's `role`.
+- Every `/api/v1/admin/...` route needs a login **and** the admin role. The role is read from the **database on every call**, not from the login token, so promoting, demoting or deleting an account takes effect at once,
+  even for a token issued earlier. No or bad token: `401`. A logged-in non-admin: `403 FORBIDDEN` (nothing else is revealed).
+
+### Admin listing tools
+
+- `GET /api/v1/admin/listings?state=&limit=&cursor=`: every listing, newest first, **including reserved, completed and removed** ones. `state` is `available`, `reserved`, `completed` or `removed`;
+  without it you get every listing that is not removed. `limit` 1-50 (default 20); paging works like the public feed (`meta.nextCursor`, a cursor only works for the query that made it). Unknown parameters are rejected with `400`.
+  Each item has the full description, `status` (`removed` for removed ones), `imageCount`, the owner as `{ id, name }` and, for removed listings, `removal: { removedAt, removedBy: "owner" | "admin", note }`. No emails, contact details, storage keys or internal fields.
+- `POST /api/v1/admin/listings/:id/remove` (optional body `{ "note": "..." }`, at most 500 characters): removes a listing in **any** status. It is the owner's soft delete plus `deletionReason: "admin_removed"`, `deletedBy` (the admin) and the note;
+  the image files are deleted. `404` if unknown, `409 LISTING_ALREADY_REMOVED` if already removed. A removed listing disappears from the public feed and from its owner's list, and the request code shows it as `removed`
+  and never shows the owner's contact detail for it (so an accepted request on it loses its contact too).
+
+### Reporting (students)
+
+- `POST /api/v1/reports` with `{ "targetType": "listing" | "user", "targetId": "...", "reason": "spam" | "inappropriate" | "misleading" | "prohibited_item" | "harassment" | "other", "details": "optional, at most 500 characters" }`.
+  The reporter is always the logged-in user; other fields (`reporterId`, `status`, ...) are rejected with `400`.
+  Rules: you cannot report yourself or your own listing (`403 CANNOT_REPORT_YOURSELF`); the listing or user must exist and a deleted listing counts as missing (`404`);
+  **one report per reporter per target, for ever** (`409 DUPLICATE_REPORT`; the document `_id` is `report:<targetType>_<targetId>_<reporterId>`, so Cloudant itself refuses a second one);
+  at most 10 **open** reports per student at a time (`429 TOO_MANY_OPEN_REPORTS`), so one account cannot flood the admin queue.
+- `GET /api/v1/reports/mine?status=` returns only **your own** reports, newest first: `{ id, targetType, target: { type, id, label }, reason, details, status, createdAt, resolvedAt }`.
+  You never see the administrator, the action taken or the admin's note.
+- **Privacy:** the reported person (or the owner of a reported listing) has no endpoint that shows reports, so they can never learn who reported them or that a report exists. Reports store ids and a title/name snapshot only (no email, contact or password data).
+
+### Report review (admin)
+
+- A report is `open`, then `resolved` or `dismissed`. A decision is **final**: deciding it again is `409 REPORT_ALREADY_DECIDED`.
+- `GET /api/v1/admin/reports?status=open|resolved|dismissed|all&targetType=listing|user`: the queue, newest first (default `status=open`). It returns at most 200 reports; `meta` is `{ count, truncated }`.
+  Each report shows the reporter and the target as `{ id, name }` / listing `{ id, title, status, owner }` (the current state, or `removed` / the saved title if it is gone). Never an email or a contact detail.
+- `GET /api/v1/admin/reports/:id`: one report, with `resolution: { action, note, adminId, at }` once decided (`404` if unknown).
+- `POST /api/v1/admin/reports/:id/dismiss` (optional `{ note }`): marks it `dismissed` (action `none`).
+- `POST /api/v1/admin/reports/:id/resolve` with `{ "action": "none" | "remove_listing", "note": "..." }` (both optional, default action `none`): marks it `resolved`.
+  `remove_listing` (listing reports only, else `400`) removes the reported listing first, with the same rules and answers as `POST /admin/listings/:id/remove`, then saves the report.
+  If saving the report conflicts with another change it is retried, and "already removed" is then accepted because it was our own first attempt.
+- **Not included on purpose:** blocking or suspending a user. User reports are reviewed and recorded (`resolved` with a note, or `dismissed`), but no account is changed automatically.
+
+### Errors (reports and admin)
+
+| Status and `error.code` | When |
+|---|---|
+| `400 VALIDATION_ERROR` | Bad or unknown field / query parameter (details list every problem) |
+| `401 UNAUTHORIZED` | No or bad login token, or the account no longer exists |
+| `403 FORBIDDEN` / `CANNOT_REPORT_YOURSELF` | Not an administrator / reporting yourself or your own listing |
+| `404 NOT_FOUND` | Unknown listing, user or report |
+| `409` `DUPLICATE_REPORT`, `REPORT_ALREADY_DECIDED`, `LISTING_ALREADY_REMOVED`, `CONFLICT` | Second report of one target / report already decided / listing already removed / changed at the same moment |
+| `429 TOO_MANY_OPEN_REPORTS` | 10 open reports already |
+| `503 DATABASE_UNAVAILABLE`, `DATABASE_INDEX_MISSING` | Cloudant cannot be reached / run `npm run db:setup` |
+
+### Cloudant indexes for Task 10
+
+`listing-admin-created` (`type, isDeleted, createdAt`) serves the sorted admin overview (the query adds `$exists: true` on `createdAt`, the same approach as the public feed; the optional status filter is applied on top).
+`report-by-reporter` (`type, reporterId`) and `report-by-status` (`type, status`) serve plain equality lookups: a student's reports and open count, and the admin queue (one query per status, merged and sorted in the code, capped at 200).
+All three are created by `npm run db:setup`; defined in `src/config/database.js`.
+
 ## How the Cloudant queries work (and their limits)
 
 - A listing is a document with `_id` `listing:<uuid>` and `type: "listing"`. Two JSON indexes serve the public feed (created by `npm run db:setup`, defined in `src/config/database.js`):
@@ -238,7 +308,7 @@ they come from the login token and from the server. A response looks like:
 ## What is verified
 
 - **Automated (`npm test`):** unit tests for validators and the selector builder, and HTTP integration tests that run the real Express app
-  (`tests/listings.api.test.js` for create/edit/delete/images, `tests/browse.api.test.js` for browsing, `tests/requests.api.test.js` for requests, the exchange lifecycle and contact privacy). **They use an in-memory fake of Cloudant**
+  (`tests/listings.api.test.js` for create/edit/delete/images, `tests/browse.api.test.js` for browsing, `tests/requests.api.test.js` for requests, the exchange lifecycle and contact privacy, `tests/admin.api.test.js` for the admin area and `tests/reports.api.test.js` for reporting and report review). **They use an in-memory fake of Cloudant**
   (`tests/helpers/fakes.js`). They prove that this backend sends the intended queries and handles the answers; they do **not** prove that real Cloudant accepts those queries
   or orders results (e.g. `null` before numbers) the same way. Races (two changes at the same moment) are simulated by making the fake reject a save as a revision conflict: that tests this backend's retry logic, not real Cloudant concurrency.
 - **Against real Cloudant (browse):** run `npm run db:verify-browse`. It only reads, runs the real browse queries (every sort, filters, search, pagination, a damaged bookmark) and prints PASS/FAIL.
@@ -257,6 +327,15 @@ they come from the login token and from the server. A response looks like:
 - **What the real-Cloudant checks do NOT prove:** the request script verifies **indexes, query acceptance and index use** (and, once data exists, the consistency of stored documents). It does **not** send, accept, decline, cancel or complete a request, and does not test duplicate
   prevention (two documents with one `_id`), revision conflicts, the competing-request handling or the contact privacy rule against real Cloudant, because proving those needs writes and the scripts never write. Those behaviours are verified only by the automated tests with the fake.
 
+- **Against real Cloudant (reports and admin overview):** run `npm run db:verify-reports` (`scripts/verify-reports.js`). It is **read-only** (same kinds of calls as the request script) and prints only PASS / FAIL / SKIP lines and counts (no ids, names, notes or details). Run `npm run db:setup` first. It checks:
+  1. **Indexes:** `report-by-reporter`, `report-by-status` and `listing-admin-created` exist as JSON indexes with the fields defined in `src/config/database.js` (it reads that list).
+  2. **Query acceptance and index use:** the report queries `report.repository.js` really sends (a student's reports with no / one / several statuses, the open count, the admin queue with one / all statuses and a target type) and the **sorted** admin listing overview
+     (not removed, removed, one status) are accepted by Cloudant and, according to `POST /_explain`, answered from the expected index. This is where the `$exists: true` sort approach is finally tested against real Cloudant.
+  3. **Only if data exists** (a sample of at most 25 documents): the admin overview is newest first and its cursor continues exactly where the previous page stopped; removed listings are really removed and admin removals record who did it; stored reports have a valid status, type, reason and id, details within the limit,
+     nobody reported themselves, resolutions match statuses, no private-looking field; the repository finds real reports by id / reporter / status; and a `remove_listing` resolution points at a removed listing. These checks are **skipped**, not failed, when there is no data.
+  It does **not** send, dismiss or resolve a report, test duplicate prevention or revision conflicts, remove a listing, or test the admin-only rule or the API-level privacy: those are verified only by the automated tests with the fake.
+  The script has **not been run against the real Cloudant yet** (see `TASK10_PROGRESS.md`).
+
 ## Project layout
 
 ```
@@ -270,7 +349,7 @@ backend/
     repositories/              all Cloudant access (listing.repository.js builds the browse query)
     serializers/               decides which fields leave the server
     middleware/ utils/         auth, upload handling, errors, helpers
-  scripts/                     setup-database.js, verify-browse.js, verify-requests.js
+  scripts/                     setup-database.js, make-admin.js, verify-browse.js, verify-requests.js, verify-reports.js
   tests/                       node:test files + helpers/fakes.js (fake Cloudant, temp uploads folder)
   uploads/                     uploaded images (ignored by Git)
 ```
