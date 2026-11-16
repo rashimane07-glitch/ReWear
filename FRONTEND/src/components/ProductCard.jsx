@@ -7,7 +7,10 @@ const typeLabel = { sell: 'For sale', exchange: 'For exchange', donate: 'Free' }
 
 export default function ProductCard({ item }) {
   const { has, toggle } = useWishlist()
-  const { id, name, image, condition, size, price, originalPrice, listingType, seller } = item
+  const { id, condition, size, price, originalPrice, listingType, seller } = item
+  const name = item.name ?? item.title
+  const image = item.image ?? item.images?.[0]
+  const sellerName = seller?.name || 'Seller'
   const saved = has(item.id)
   return (
     <article className="group">
@@ -27,13 +30,13 @@ export default function ProductCard({ item }) {
         </div>
         <h3 className="text-xl mt-1">{name}</h3>
         <p className="mt-1 font-medium">
-          {listingType === 'sell' && <>₹{price.toLocaleString('en-IN')} {originalPrice && <s className="text-charcoal/40 text-sm font-normal ml-1">₹{originalPrice.toLocaleString('en-IN')}</s>}</>}
+          {listingType === 'sell' && price != null && <>₹{Number(price).toLocaleString('en-IN')} {originalPrice ? <s className="text-charcoal/40 text-sm font-normal ml-1">₹{Number(originalPrice).toLocaleString('en-IN')}</s> : null}</>}
           {listingType === 'exchange' && <span className="text-rose">Open to exchange</span>}
           {listingType === 'donate' && <span className="text-rose">Free to a good home</span>}
         </p>
         <div className="flex items-center gap-2 mt-3 text-xs text-charcoal/70">
-          <span className="w-6 h-6 rounded-full bg-blush text-plum flex items-center justify-center text-[10px] font-medium">{seller.name[0]}</span>
-          {seller.name} · {seller.college}
+          <span className="w-6 h-6 rounded-full bg-blush text-plum flex items-center justify-center text-[10px] font-medium">{sellerName[0]}</span>
+          {sellerName}{seller?.college ? ` · ${seller.college}` : ''}
         </div>
       </div>
     </article>

@@ -219,3 +219,21 @@ export const updateRequestStatus = (id, status) => {
   if (status === 'accepted') requests.forEach((x) => { if (x.listingId === r.listingId && x.id !== r.id && x.status === 'pending') x.status = 'declined' })
   return mock(r)
 }
+
+// Edit a listing. Real backend: PATCH /listings/:id (only title, description and, for "sell" listings, price).
+export const updateListing = (id, changes) => {
+  if (API_URL) {
+    const body = {}
+    if (changes.title !== undefined) body.title = changes.title
+    if (changes.description !== undefined) body.description = changes.description
+    if (changes.price !== undefined) body.price = changes.price
+    return call(`/listings/${id}`, { method: 'PATCH', body: JSON.stringify(body) }).then((d) => normalizeListing(d?.listing || d))
+  }
+  const l = listings.find((x) => x.id === id)
+  if (l) {
+    if (changes.title !== undefined) { l.name = changes.title; l.title = changes.title }
+    if (changes.description !== undefined) l.description = changes.description
+    if (changes.price !== undefined) l.price = changes.price
+  }
+  return mock(l)
+}

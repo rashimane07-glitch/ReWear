@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { Search, SlidersHorizontal } from 'lucide-react'
 import ProductCard from '../components/ProductCard'
 import FilterSidebar from '../components/FilterSidebar'
@@ -10,28 +10,41 @@ import { FILTER_OPTIONS } from '../data/listings'
 
 const emptyFilters = (category) => ({ category: category ? [category] : [], size: [], condition: [], type: [], maxPrice: FILTER_OPTIONS.maxPrice })
 
+// Compare labels loosely so "Western Wear", "western_wear" and "western-wear" all match.
+const norm = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const matches = (selected, value) => !selected.length || selected.some((s) => norm(s) === norm(value))
+
 export default function Explore() {
   const [params] = useSearchParams()
   const [all, setAll] = useState(null) // null = loading
+  const [error, setError] = useState(null)
+  const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState('newest')
   const [filters, setFilters] = useState(emptyFilters(params.get('category')))
   const [drawer, setDrawer] = useState(false)
 
-  useEffect(() => { getListings().then(setAll) }, [])
+  useEffect(() => {
+    let off = false
+    setAll(null); setError(null)
+    getListings()
+      .then((d) => { if (!off) setAll(Array.isArray(d) ? d : []) })
+      .catch((err) => { if (!off) { setError(err.message || 'Could not load listings.'); setAll([]) } })
+    return () => { off = true }
+  }, [attempt])
 
   const results = useMemo(() => {
     if (!all) return []
     const q = query.trim().toLowerCase()
     const list = all.filter((i) =>
-      (!q || `${i.name} ${i.category} ${i.description}`.toLowerCase().includes(q)) &&
-      (!filters.category.length || filters.category.includes(i.category)) &&
-      (!filters.size.length || filters.size.includes(i.size)) &&
-      (!filters.condition.length || filters.condition.includes(i.condition)) &&
-      (!filters.type.length || filters.type.includes(i.listingType)) &&
-      (i.listingType !== 'sell' || i.price <= filters.maxPrice))
-    const price = (i, empty) => (i.listingType === 'sell' ? i.price : empty)
-    if (sort === 'newest') list.sort((a, b) => b.listedAt - a.listedAt)
+      (!q || `${i.name ?? i.title ?? ''} ${i.category ?? ''} ${i.description ?? ''}`.toLowerCase().includes(q)) &&
+      matches(filters.category, i.category) &&
+      matches(filters.size, i.size) &&
+      matches(filters.condition, i.condition) &&
+      matches(filters.type, i.listingType) &&
+      (i.listingType !== 'sell' || i.price == null || i.price <= filters.maxPrice))
+    const price = (i, empty) => (i.listingType === 'sell' && i.price != null ? i.price : empty)
+    if (sort === 'newest') list.sort((a, b) => (b.listedAt || 0) - (a.listedAt || 0))
     if (sort === 'low') list.sort((a, b) => price(a, Infinity) - price(b, Infinity))
     if (sort === 'high') list.sort((a, b) => price(b, -1) - price(a, -1))
     return list
@@ -73,11 +86,14 @@ export default function Explore() {
           </div>
         )}
         <section aria-live="polite">
-          <p className="text-sm text-charcoal/70 mb-6">{all ? `${results.length} pieces found` : 'Loading pieces…'}</p>
+          <p className="text-sm text-charcoal/70 mb-6">{!all ? 'Loading pieces…' : error ? 'Could not load pieces' : `${results.length} pieces found`}</p>
           <div className="grid grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-10">
             {!all && Array.from({ length: 6 }).map((_, i) => <div key={i} className="aspect-[4/5] bg-blush/60 animate-pulse" />)}
-            {all && results.map((i) => <ProductCard key={i.id} item={{ ...i, image: i.images[0] }} />)}
-            {all && !results.length && (
+            {all && !error && results.map((i) => <ProductCard key={i.id} item={{ ...i, image: i.image ?? i.images?.[0] }} />)}
+            {all && error && (
+              <EmptyState title="Couldn't load listings" text={error} action={<Button onClick={() => setAttempt((n) => n + 1)}>Try again</Button>} />
+            )}
+            {all && !error && !results.length && (
               <EmptyState title={all.length ? 'No pieces match yet' : 'The marketplace is empty'} text={all.length ? 'Try a different search or clear a few filters.' : 'Be the first to list a piece.'}
                 action={<Button variant="secondary" onClick={clear}>Clear filters</Button>} />
             )}
