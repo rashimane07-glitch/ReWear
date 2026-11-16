@@ -4,6 +4,44 @@ import { products, categories, impactStats } from '../data/mockData'
 import { listings } from '../data/listings'
 import { getToken } from './auth'
 
+// Frontend label -> backend value (backend/src/config/constants.js)
+export const CATEGORY_MAP = {
+  'Western Wear': 'tops',
+  'Ethnic Wear': 'ethnic_wear',
+  'Casual Wear': 'other',
+  'Formal Wear': 'other',
+  'Accessories': 'accessories',
+  "Men's Fashion": 'other',
+};
+
+export const SIZE_MAP = {
+  'XS': 'xs',
+  'S': 's',
+  'M': 'm',
+  'L': 'l',
+  'XL': 'xl',
+  'XXL': 'xxl',
+  'Free size': 'free_size',
+  'Free Size': 'free_size',
+};
+
+export const CONDITION_MAP = {
+  'New with tags': 'new_with_tags',
+  'Like new': 'like_new',
+  'Good': 'good',
+  'Fair': 'fair',
+};
+
+const toBackend = (map, value) =>
+  map[value] ?? String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+export const mapListingPayload = (form) => ({
+  ...form,
+  category: toBackend(CATEGORY_MAP, form.category),
+  size: toBackend(SIZE_MAP, form.size),
+  condition: toBackend(CONDITION_MAP, form.condition),
+});
+
 const API_URL = import.meta.env.VITE_API_URL
 const mock = (data) => new Promise((resolve) => setTimeout(() => resolve(data), 150))
 
@@ -118,15 +156,18 @@ export const createListing = async (data) => {
     if (images.length > MAX_IMAGES) throw new Error(`You can upload at most ${MAX_IMAGES} images.`)
     if (images.some((i) => i.file && i.file.size > MAX_IMAGE_BYTES)) throw new Error('Each image must be 5 MB or smaller.')
 
-    const price = data.listingType === 'sell' ? Number(data.price) : undefined
+    // CHANGED: convert labels like "Like new" / "Free size" to backend values (like_new / free_size)
+    const mapped = mapListingPayload(data)
+
+    const price = mapped.listingType === 'sell' ? Number(mapped.price) : undefined
     const payload = {
-      title: data.title ?? data.name,
-      description: data.description,
-      category: data.category,
-      size: data.size,
-      colour: data.colour ?? data.color,
-      condition: data.condition,
-      listingType: data.listingType,
+      title: mapped.title ?? mapped.name,
+      description: mapped.description,
+      category: mapped.category,
+      size: mapped.size,
+      colour: mapped.colour ?? mapped.color,
+      condition: mapped.condition,
+      listingType: mapped.listingType,
       ...(price !== undefined ? { price } : {}),
     }
     const created = await call('/listings', { method: 'POST', body: JSON.stringify(payload) })

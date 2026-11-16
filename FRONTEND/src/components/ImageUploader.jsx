@@ -2,8 +2,8 @@ import { useRef, useState } from 'react'
 import { Camera, X, RefreshCw } from 'lucide-react'
 
 const TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_MB = 10
-const MAX_IMAGES = 5
+const MAX_MB = 5 // matches the backend limit: 5 MB per image
+const MAX_IMAGES = 5 // matches the backend limit: 5 images per listing
 
 // images: [{ id, file, url }]. The parent owns the list; we call onChange with the new list.
 export default function ImageUploader({ images, onChange, error }) {

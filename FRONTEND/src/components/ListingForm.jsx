@@ -10,7 +10,8 @@ import { createListing } from '../services/api'
 import { FILTER_OPTIONS } from '../data/listings'
 
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'Free size']
-const empty = { name: '', category: '', size: '', condition: '', price: '', lookingFor: '', description: '', location: '' }
+const empty = { name: '', category: '', size: '', condition: '', colour: '', price: '', lookingFor: '', description: '', location: '' }
+const USING_API = Boolean(import.meta.env.VITE_API_URL)
 
 // mode: 'sell' (shows price) or 'donate' (no price, listingType = donate)
 export default function ListingForm({ mode }) {
@@ -36,10 +37,10 @@ export default function ListingForm({ mode }) {
     if (!values.category) e.category = 'Choose a category.'
     if (!values.size) e.size = 'Choose a size.'
     if (!values.condition) e.condition = 'Choose a condition.'
+    if (values.colour.trim().length < 2) e.colour = 'Add a colour (at least 2 characters).'
     if (type === 'exchange' && values.lookingFor.trim().length < 3) e.lookingFor = 'Tell people what you would like in return.'
-    if (needsPrice && !(Number(values.price) > 0)) e.price = 'Enter a price above ₹0.'
+    if (needsPrice && !(Number.isInteger(Number(values.price)) && Number(values.price) > 0)) e.price = 'Enter a whole number of rupees above ₹0.'
     if (values.description.trim().length < 10) e.description = 'Add a short description (at least 10 characters).'
-    if (!values.location.trim()) e.location = 'Add your campus or neighbourhood.'
     return e
   }
 
@@ -53,8 +54,12 @@ export default function ListingForm({ mode }) {
       const listing = await createListing({ owner: user, ...values, price: needsPrice ? Number(values.price) : undefined, listingType: type, images })
       setDone(listing)
       toast(isSell ? 'Listing published.' : 'Donation submitted.')
-    } catch {
-      toast('Something went wrong. Please try again.', 'error')
+    } catch (err) {
+      // Show the backend's field-level messages next to the matching inputs when it sends them.
+      const fieldErrors = {}
+      ;(Array.isArray(err.details) ? err.details : []).forEach((d) => { if (d?.field) fieldErrors[d.field === 'title' ? 'name' : d.field] = d.message })
+      if (Object.keys(fieldErrors).length) setErrors(fieldErrors)
+      toast(err.message || 'Something went wrong. Please try again.', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -67,7 +72,7 @@ export default function ListingForm({ mode }) {
       <div className="max-w-xl mx-auto text-center py-16">
         <CheckCircle2 size={48} className="text-plum mx-auto mb-5" />
         <h2 className="text-4xl">{isSell ? 'Your piece is listed.' : 'Thank you for giving.'}</h2>
-        <p className="mt-3 text-charcoal/70">{isSell ? 'Interested students can now send you requests.' : 'Students can now request your donation.'} (Demo mode: visible in Explore until you refresh the page.)</p>
+        <p className="mt-3 text-charcoal/70">{isSell ? 'Interested students can now send you requests.' : 'Students can now request your donation.'}{USING_API ? '' : ' (Demo mode: visible in Explore until you refresh the page.)'}</p>
         <div className="mt-8 flex flex-wrap gap-3 justify-center">
           <Link to={`/product/${done.id}`}><Button>View listing</Button></Link>
           <Button variant="secondary" onClick={reset}>{isSell ? 'List another piece' : 'Donate another piece'}</Button>
@@ -93,7 +98,7 @@ export default function ListingForm({ mode }) {
           </div>
         )}
         <FormField id="name" label="Item name" error={errors.name}>
-          <input id="name" value={values.name} onChange={set('name')} placeholder="e.g. Vintage denim jacket" className={inputClass(errors.name)} />
+          <input id="name" maxLength={100} value={values.name} onChange={set('name')} placeholder="e.g. Vintage denim jacket" className={inputClass(errors.name)} />
         </FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField id="category" label="Category" error={errors.category}>
@@ -111,9 +116,12 @@ export default function ListingForm({ mode }) {
               <option value="">Select condition</option>{FILTER_OPTIONS.conditions.map((c) => <option key={c}>{c}</option>)}
             </select>
           </FormField>
+          <FormField id="colour" label="Colour" error={errors.colour}>
+            <input id="colour" maxLength={30} value={values.colour} onChange={set('colour')} placeholder="e.g. Mocha brown" className={inputClass(errors.colour)} />
+          </FormField>
           {needsPrice && (
             <FormField id="price" label="Price (₹)" error={errors.price}>
-              <input id="price" type="number" min="1" inputMode="numeric" value={values.price} onChange={set('price')} placeholder="650" className={inputClass(errors.price)} />
+              <input id="price" type="number" min="1" step="1" inputMode="numeric" value={values.price} onChange={set('price')} placeholder="650" className={inputClass(errors.price)} />
             </FormField>
           )}
         </div>
@@ -123,9 +131,9 @@ export default function ListingForm({ mode }) {
           </FormField>
         )}
         <FormField id="description" label="Description" error={errors.description}>
-          <textarea id="description" rows="4" value={values.description} onChange={set('description')} placeholder="Share the fit, fabric, how often it was worn, and anything else worth knowing…" className={inputClass(errors.description)} />
+          <textarea id="description" rows="4" maxLength={1000} value={values.description} onChange={set('description')} placeholder="Share the fit, fabric, how often it was worn, and anything else worth knowing…" className={inputClass(errors.description)} />
         </FormField>
-        <FormField id="location" label={isSell ? 'Campus or location' : 'Pickup location'} error={errors.location}>
+        <FormField id="location" label={`${isSell ? 'Campus or location' : 'Pickup location'} (optional)`} error={errors.location}>
           <div className="relative">
             <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-rose" />
             <input id="location" value={values.location} onChange={set('location')} placeholder="e.g. North Campus, Delhi" className={`${inputClass(errors.location)} pl-11`} />
