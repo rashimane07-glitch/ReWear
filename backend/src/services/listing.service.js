@@ -171,8 +171,8 @@ function assertVisible(listingDoc) {
   }
 }
 
-// Any logged-in user may view a listing that is not deleted. Only the public fields
-// leave the server (see listing.serializer.js).
+// Anyone (also a visitor who is not logged in) may view a listing that is not deleted, like the public
+// browse feed. Only the public fields leave the server (see listing.serializer.js): never contact details.
 async function getListing(listingId) {
   const listing = await listingRepository.findListingById(listingId);
   assertVisible(listing);

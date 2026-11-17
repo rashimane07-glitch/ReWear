@@ -11,6 +11,7 @@ import Donate from './pages/Donate'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
+import Admin from './pages/Admin'
 import About from './pages/About'
 import ComingSoon from './pages/ComingSoon'
 
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/sell" element={<Protected><Sell /></Protected>} />
           <Route path="/donate" element={<Protected><Donate /></Protected>} />
           <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+          <Route path="/admin" element={<Protected><Admin /></Protected>} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="*" element={<ComingSoon name="Page not found" />} />

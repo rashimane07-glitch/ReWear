@@ -199,3 +199,34 @@ export const updateRequestStatus = (id, status) => {
   if (status === 'accepted') requests.forEach((x) => { if (x.listingId === r.listingId && x.id !== r.id && x.status === 'pending') x.status = 'rejected' })
   return mock(r)
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Reports and administration (REAL mode only: the backend's /reports and /admin routes).
+// There is no demo data for these, so MOCK mode answers with a clear error instead of pretending.
+// ---------------------------------------------------------------------------------------------------------------
+const needsBackend = () => Promise.reject(new ApiError('Reports and the admin area need the real backend (set VITE_API_URL).', { code: 'MOCK_MODE' }))
+export const REPORT_REASONS = [['spam', 'Spam'], ['inappropriate', 'Inappropriate'], ['misleading', 'Misleading'], ['prohibited_item', 'Prohibited item'], ['harassment', 'Harassment'], ['other', 'Other']]
+
+// A student reports a listing. details is optional (max 500 characters).
+export const reportListing = (listingId, reason, details) =>
+  API_URL ? post('/reports', { targetType: 'listing', targetId: String(listingId), reason, ...(details && details.trim() ? { details: details.trim() } : {}) }).then((d) => d.report) : needsBackend()
+
+// Admin: the report queue. status: 'open' | 'resolved' | 'dismissed' | 'all'
+export const getAdminReports = (status = 'open') =>
+  API_URL ? get(`/admin/reports?status=${encodeURIComponent(status)}`).then((d) => d.reports) : needsBackend()
+export const dismissReport = (id, note) =>
+  API_URL ? post(`/admin/reports/${encodeURIComponent(id)}/dismiss`, note ? { note } : {}).then((d) => d.report) : needsBackend()
+// action: 'none' (handled) | 'remove_listing' (also remove the reported listing)
+export const resolveReport = (id, action, note) =>
+  API_URL ? post(`/admin/reports/${encodeURIComponent(id)}/resolve`, { action, ...(note ? { note } : {}) }).then((d) => d.report) : needsBackend()
+
+// Admin: every listing (any status), newest first, one page at a time. state: '' (not removed) | available | reserved | completed | removed
+export const getAdminListings = ({ state = '', cursor } = {}) => {
+  if (!API_URL) return needsBackend()
+  const q = new URLSearchParams({ limit: '20' })
+  if (state) q.set('state', state)
+  if (cursor) q.set('cursor', cursor)
+  return getPage(`/admin/listings?${q}`).then(({ data, meta }) => ({ listings: data.listings, nextCursor: (meta && meta.nextCursor) || null }))
+}
+export const removeListingAsAdmin = (id, note) =>
+  API_URL ? post(`/admin/listings/${encodeURIComponent(id)}/remove`, note ? { note } : {}).then((d) => d.listing) : needsBackend()

@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useWishlist } from '../context/WishlistContext'
-import { Heart, Lock } from 'lucide-react'
+import { Heart, Lock, Flag } from 'lucide-react'
 import Button from '../components/Button'
 import Modal from '../components/Modal'
 import ExchangeOfferModal from '../components/ExchangeOfferModal'
+import ReportModal from '../components/ReportModal'
 import ProductCard from '../components/ProductCard'
 import ImageWithFallback from '../components/ImageWithFallback'
 import EmptyState from '../components/EmptyState'
@@ -34,23 +35,29 @@ export default function ProductDetails() {
   const saved = has(wid)
   const [open, setOpen] = useState(false)
   const [sent, setSent] = useState(false)
+  const [declined, setDeclined] = useState(false) // the owner declined my earlier request: the backend refuses a new one
+  const [reporting, setReporting] = useState(false)
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
-    setItem(undefined); setActive(0); setSent(false); window.scrollTo(0, 0)
+    setItem(undefined); setActive(0); setSent(false); setDeclined(false); window.scrollTo(0, 0)
     getListingById(id).then((i) => {
       setItem(i)
       if (i) getSimilarListings(i).then(setSimilar).catch(() => setSimilar([]))
     }).catch((err) => {
-      // REAL mode: the backend shows a single listing to logged-in people only, so a guest is sent to log in first.
+      // The product page is public. A 401 can only come from an older backend that still required a login.
       if (err.status === 401) return navigate('/login', { replace: true, state: { from: location.pathname } })
       setItem(null); toast(err.message, 'error')
     })
   }, [id])
 
   useEffect(() => {
-    if (user) getRequests(user.id).then(({ sent }) => setSent(sent.some((r) => String(r.listingId) === String(id) && ['pending', 'accepted'].includes(r.status)))).catch(() => {})
+    if (user) getRequests(user.id).then(({ sent }) => {
+      const mineForThis = sent.filter((r) => String(r.listingId) === String(id))
+      setSent(mineForThis.some((r) => ['pending', 'accepted'].includes(r.status)))
+      setDeclined(mineForThis.some((r) => r.status === 'declined' || r.status === 'rejected'))
+    }).catch(() => {})
   }, [id, user])
 
   if (item === undefined) return <div className="max-w-7xl mx-auto px-6 py-24"><div className="h-96 bg-blush/60 animate-pulse" /></div>
@@ -105,12 +112,17 @@ export default function ProductDetails() {
           {item.location && <p className="mt-3 text-sm text-charcoal/70">Pickup location: {item.location}</p>}
 
           <div className="mt-8 flex gap-3">
-            <Button className="flex-1" disabled={sent || mine || unavailable} onClick={() => (user ? setOpen(true) : navigate('/login', { state: { from: location.pathname } }))}>{mine ? 'This is your listing' : unavailable ? 'No longer available' : sent ? 'Request pending' : a.button}</Button>
+            <Button className="flex-1" disabled={sent || mine || unavailable || declined} onClick={() => (user ? setOpen(true) : navigate('/login', { state: { from: location.pathname } }))}>{mine ? 'This is your listing' : unavailable ? 'No longer available' : sent ? 'Request pending' : declined ? 'Request declined' : a.button}</Button>
             <button onClick={() => toggle(wid)} aria-pressed={saved} className="border border-plum text-plum px-4 flex items-center gap-2 text-sm">
               <Heart size={16} fill={saved ? '#C58B91' : 'none'} />{saved ? 'Saved' : 'Save'}
             </button>
           </div>
           <p className="flex items-start gap-2 text-xs text-charcoal/60 mt-3"><Lock size={14} className="mt-0.5 shrink-0" />No payment is taken on ReWear. The owner's contact details are shared only if they accept your request.</p>
+          {!mine && (
+            <button type="button" onClick={() => (user ? setReporting(true) : navigate('/login', { state: { from: location.pathname } }))} className="mt-3 flex items-center gap-2 text-xs text-charcoal/60 underline hover:text-plum">
+              <Flag size={13} />Report this listing
+            </button>
+          )}
 
           <div className="mt-8 bg-blush/50 p-5 flex items-center gap-4">
             <span className="w-12 h-12 rounded-full bg-plum text-cream flex items-center justify-center font-display text-xl">{item.seller.name[0]}</span>
@@ -126,6 +138,7 @@ export default function ProductDetails() {
         </section>
       )}
 
+      {reporting && <ReportModal listing={item} onClose={() => setReporting(false)} />}
       {open && item.listingType === 'exchange' && <ExchangeOfferModal listing={item} onClose={() => setOpen(false)} onSent={() => setSent(true)} />}
       {open && item.listingType !== 'exchange' && (
         <Modal title={a.title} onClose={() => setOpen(false)}>

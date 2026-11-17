@@ -15,11 +15,12 @@ export default function Home() {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [stats, setStats] = useState([])
+  const [trendingError, setTrendingError] = useState('') // REAL mode: the backend could not be reached
 
   useEffect(() => {
-    getTrendingProducts().then(setProducts)
-    getCategories().then(setCategories)
-    getImpactStats().then(setStats)
+    getTrendingProducts().then(setProducts).catch((err) => setTrendingError(err.message || 'Could not load the latest pieces.'))
+    getCategories().then(setCategories).catch(() => setCategories([]))
+    getImpactStats().then(setStats).catch(() => setStats([]))
   }, [])
 
   return (
@@ -96,6 +97,7 @@ export default function Home() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-5 gap-y-10">
           {products.map((p) => <ProductCard key={p.id} item={p} />)}
         </div>
+        {trendingError && <p role="alert" className="text-sm text-plum">{trendingError} <Link to="/explore" className="underline">Open Explore</Link></p>}
       </section>
 
       {/* HOW IT WORKS */}
