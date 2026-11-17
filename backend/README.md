@@ -5,7 +5,7 @@ REST API for **ReWear**, a student marketplace to sell, exchange or donate pre-o
 - **Stack:** Node.js (22 or newer) · Express · IBM Cloudant (database) · JWT + bcryptjs (login) · Multer (uploads)
 - **Images:** saved on the backend's own disk in `backend/uploads/` and served at `/uploads/...`.
   The project does **not** use IBM Cloud Object Storage (it must stay free). Cloudant stores only the image *keys*, never image bytes.
-- **Frontend:** a separate React app (not in this folder). It talks to this API only.
+- **Frontend:** the React app in `../FRONTEND` (see the root README). It talks to this API only.
 
 > Status: tasks 1-9 (setup, auth, profile, listing create/edit/delete, image upload, browse/search/filters, requests/exchange/contact privacy) are done.
 > Task 9 (requests, exchange and contact privacy) is described in "Requests, exchange and contact privacy" below;
@@ -35,6 +35,8 @@ Environment variables (see `.env.example` for explanations): `PORT`, `NODE_ENV`,
 | `npm test` | Run all automated tests (no internet, no credentials needed) |
 | `npm run seed:demo:dry` | Shows what the demo seed would do. Writes nothing; works without Cloudant settings (then it only checks the demo data and photos) |
 | `npm run seed:demo` | Adds the demo seller and the 30 demo listings (see "Demo data" below). Safe to repeat |
+| `npm run demo:restore-images` (`:dry`) | Copies the demo photos from `demo-images/` into this computer's `uploads/`, under the names Cloudant expects. Reads Cloudant only; never overwrites. Run it on any computer that did not run the seed |
+| `npm run demo:seller-login` (`:dry`) | Sets `DEMO_SELLER_PASSWORD` and `DEMO_SELLER_PHONE` (from `.env`) on the demo seller only, so it can log in and accept requests |
 | `npm run db:setup` | Create the database (if missing) and the indexes. **Run again after updating to Task 8** (the two `listing-feed-*` indexes), **to Task 9** (the three `request-by-*` indexes) **and to Task 10** (`listing-admin-created` and the two `report-by-*` indexes) |
 | `npm run db:verify-browse` | Read-only check of the browse queries against your **real** Cloudant (see "What is verified") |
 | `npm run db:verify-requests` | Read-only check of the request **indexes and queries** against your **real** Cloudant (see "What is verified"). It never writes, and it does **not** test the request workflow (send, accept, decline, cancel, complete) |
@@ -56,7 +58,7 @@ Base URL: `/api/v1`. Every answer is `{ "success": true, "data": ..., "meta": ..
 | **`GET /listings`** | **no** | **Public browse, search, filter, sort, paginate (Task 8)** |
 | `POST /listings` | yes | Create a listing |
 | `GET /listings/mine` | yes | The logged-in user's own listings |
-| `GET /listings/:id` | yes | One listing |
+| `GET /listings/:id` | **no** | One listing (public product page; deleted listings give 404) |
 | `PATCH /listings/:id`, `DELETE /listings/:id` | yes (owner) | Edit / soft-delete, only while `available` |
 | `POST /listings/:id/images` | yes (owner) | Upload up to 5 images (JPEG, PNG or WebP, 5 MB each), field name `images` |
 | `POST /requests` | yes | Ask for a listing (Task 9) |
@@ -323,7 +325,8 @@ The data is in `scripts/demo-listings.js`; every listing is checked with the sam
 - **Never touches real data:** it never deletes anything and never changes a record without that marker. If a real record uses a demo id or the demo email, it is left alone and reported.
 - **Photos:** put `demo-01.jpg` … `demo-30.jpg` in `backend/demo-images/` (see the README there). They are stored exactly like app uploads (`uploads/listings/<id>/…`). Missing photos are skipped; run the seed again later to add them.
 - **Demo seller login:** set `DEMO_SELLER_PASSWORD` in `.env` before the first run if you want to log in as the seller. Otherwise its password is random and unknown.
-- The demo seller has no phone contact, so it cannot accept requests until someone logs in as it and adds one.
+- The demo seller cannot log in and has no phone until you run `npm run demo:seller-login` (it needs a phone to accept requests).
+- On another computer, run `npm run demo:restore-images` so the demo photos appear there too.
 
 ## How the Cloudant queries work (and their limits)
 

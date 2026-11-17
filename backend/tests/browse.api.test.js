@@ -248,7 +248,7 @@ describe('GET /api/v1/listings: public browsing', () => {
 
   it('still protects the other listing routes (route order is intact)', async () => {
     assert.equal((await api('GET', '/listings/mine')).status, 401);
-    assert.equal((await api('GET', `/listings/${seeded.jacket.id}`)).status, 401);
+    assert.equal((await api('GET', `/listings/${seeded.jacket.id}`)).status, 200); // product page is public
     assert.equal((await api('POST', '/listings', { json: {} })).status, 401);
     assert.equal((await api('GET', '/listings/mine', { token: alice.token })).status, 200);
   });

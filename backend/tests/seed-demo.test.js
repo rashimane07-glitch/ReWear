@@ -177,3 +177,43 @@ test('demo seller: created once with the marker, never duplicated, never takes o
   const realWithId = fakeUserRepo([{ _id: `user:${DEMO_SELLER.id}`, type: 'user', email: 'x@y.z' }]);
   await assert.rejects(() => quiet(() => ensureSeller({ dryRun: false, userRepository: realWithId })), /NOT made by this script/);
 });
+
+// ---------- demo seller login (scripts/demo-seller-login.js) ----------
+const bcryptForTests = require('bcryptjs');
+const { checkInputs, setSellerLogin } = require('../scripts/demo-seller-login');
+
+function fakeSellerRepo(seller) {
+  return {
+    seller,
+    writes: 0,
+    async findUserById(id) { return this.seller && this.seller._id === `user:${id}` ? { ...this.seller } : null; },
+    async updateUser(doc) { this.writes += 1; this.seller = { ...doc }; return true; },
+  };
+}
+
+test('demo seller login: inputs follow the app rules and the phone is normalised', () => {
+  assert.equal(checkInputs('longenough1', '9876543210').contact.value, '+919876543210');
+  assert.throws(() => checkInputs('short', '9876543210'), /at least 8/);
+  assert.throws(() => checkInputs('longenough1', ''), /DEMO_SELLER_PHONE is required/);
+  assert.throws(() => checkInputs('longenough1', 'abc'), /DEMO_SELLER_PHONE/);
+});
+
+test('demo seller login: sets password + phone on the marked seller only, dry run writes nothing, repeat is a no-op', async () => {
+  const repo = fakeSellerRepo({ _id: `user:${DEMO_SELLER.id}`, type: 'user', demoSeed: DEMO_MARKER, passwordHash: await bcryptForTests.hash('random-unknown', 4), contact: null });
+  const input = checkInputs('DemoSeller2026', '9876543210');
+  assert.equal(await setSellerLogin({ dryRun: true, userRepository: repo, ...input }), 'would-update');
+  assert.equal(repo.writes, 0);
+  assert.equal(await setSellerLogin({ dryRun: false, userRepository: repo, ...input }), 'updated');
+  assert.ok(await bcryptForTests.compare('DemoSeller2026', repo.seller.passwordHash));
+  assert.deepEqual(repo.seller.contact, { type: 'phone', value: '+919876543210' });
+  assert.equal(await setSellerLogin({ dryRun: false, userRepository: repo, ...input }), 'unchanged');
+  assert.equal(repo.writes, 1);
+});
+
+test('demo seller login: refuses an unmarked account or a missing seller', async () => {
+  const input = checkInputs('DemoSeller2026', '9876543210');
+  const real = fakeSellerRepo({ _id: `user:${DEMO_SELLER.id}`, type: 'user', passwordHash: 'x', contact: null });
+  await assert.rejects(() => setSellerLogin({ dryRun: false, userRepository: real, ...input }), /NOT made by the seed/);
+  assert.equal(real.writes, 0);
+  await assert.rejects(() => setSellerLogin({ dryRun: false, userRepository: fakeSellerRepo(null), ...input }), /does not exist/);
+});

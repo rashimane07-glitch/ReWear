@@ -37,7 +37,7 @@ function ListingRow({ item, onEdit, onDelete }) {
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
         <button onClick={() => onEdit(item)} disabled={!editable} title={editable ? undefined : 'Only available listings can be edited.'} className="text-sm border border-plum text-plum px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Edit</button>
-        <button onClick={() => onDelete(item)} className="text-sm border border-charcoal/40 px-3 py-1.5">Delete</button>
+        <button onClick={() => onDelete(item)} disabled={!editable} title={editable ? undefined : 'Only available listings can be deleted.'} className="text-sm border border-charcoal/40 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Delete</button>
       </div>
     </li>
   )

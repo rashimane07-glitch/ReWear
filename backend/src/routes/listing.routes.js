@@ -10,7 +10,7 @@ const router = express.Router();
 router.get('/', listingController.browse); //                                       GET    /api/v1/listings  (PUBLIC: browse, search, filter)
 router.post('/', authenticate, listingController.create); //                          POST /api/v1/listings
 router.get('/mine', authenticate, listingController.listMine); //                     GET    /api/v1/listings/mine  (must stay above /:id)
-router.get('/:id', authenticate, listingController.getOne); //                         GET    /api/v1/listings/:id
+router.get('/:id', listingController.getOne); //                                       GET    /api/v1/listings/:id  (PUBLIC: product page)
 router.patch('/:id', authenticate, listingController.update); //                       PATCH  /api/v1/listings/:id
 router.delete('/:id', authenticate, listingController.remove); //                     DELETE /api/v1/listings/:id
 router.post('/:id/images', authenticate, uploadImages, listingController.uploadImages); // POST /api/v1/listings/:id/images

@@ -157,3 +157,12 @@ Real two-account walk-through (backend running, `FRONTEND/.env` with `VITE_API_U
 A tries to accept WITHOUT a phone (expect the toast and the profile form opening), adds a phone, accepts (the listing becomes reserved and leaves Explore; other pending requests on it become declined); B opens My Requests → the owner's phone appears ONLY now; A cancels or B cancels (listing returns to Explore, phone disappears); A marks another as completed (phone disappears); a third account never sees any of it.
 **Known limitations:** an exchange offer is a text snapshot (title, size/condition, description) — the offered piece stays listed and is not reserved; "Looking for" is only inside the listing description (not parsed on the cards); request rows show no photo (the backend's request summary has none); no confirmation dialog before Cancel / Call off; request lists are limited to the newest 200 by the backend; Dashboard "Edit" listing is still not wired.
 **Phase 4 has NOT been started.**
+
+---
+
+## STATUS UPDATE (17 Nov 2026, integration/final-submission) — supersedes the "not started" notes above
+Phases 1-3 above are merged and were tested end to end in a browser (real backend code with the in-memory test database,
+and browse/filters/photos against the real Cloudant). Added on top: gender + category labels, listing editing from the
+Dashboard, 30 demo listings with photos, a public product page, "Report this listing", and an Admin page (reports queue
+and listings). Phase 4/5 items that are still open: wishlist stored on the account (it is browser-only), real profile
+fields for college/location, password reset. See the root README for how to run everything.
