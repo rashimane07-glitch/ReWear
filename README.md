@@ -68,9 +68,11 @@ More detail: [`backend/README.md`](backend/README.md) (API, data model, verifica
 
 | Who | Work |
 |---|---|
-| Rashi Mane | Backend (tasks 1-10), frontend-backend integration (`TASK11_PROGRESS.md`) |
-| Bhumika Maheshwari | Frontend pages and components, frontend testing (`TESTING_REPORT.md`) |
-| Ananya | Cloudant verification (`Person3_Cloudant_Verification_Report.docx`) |
-| Dhrati Nigam | Gender and category support, listing editing, demo data, reports/admin screens, final integration |
+| Who | Work |
+|---|---|
+| Rashi Mane | Backend development ,frontend-backend integration and debugging |
+| Dhrati Nigam | UI/UX design, complete frontend development, debugging, testing, and final integration |
+| Bhumika Maheshwari | Frontend components and testing |
+| Ananya | Cloudant verification and documentation |
 
 Demo photos: Unsplash License, see [`backend/demo-images/CREDITS.md`](backend/demo-images/CREDITS.md).
