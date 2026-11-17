@@ -10,6 +10,7 @@ const ApiError = require('../utils/ApiError');
 const {
   LISTING_CATEGORIES,
   LISTING_SIZES,
+  LISTING_GENDERS,
   LISTING_CONDITIONS,
   LISTING_TYPES,
   PRICE_LIMITS,
@@ -20,6 +21,7 @@ const ALLOWED_FIELDS = [
   'description',
   'category',
   'size',
+  'gender',
   'colour',
   'condition',
   'listingType',
@@ -80,7 +82,22 @@ function makeCheckers(body, cleaned, addError, onlyPresent) {
     cleaned[field] = value;
   };
 
-  return { text, choice };
+  // An optional choice: missing or null means "not set" (stored as null).
+  const optionalChoice = (field, label, allowed) => {
+    if (skip(field)) return;
+    const raw = body[field];
+    if (raw === undefined || raw === null || (typeof raw === 'string' && raw.trim() === '')) {
+      cleaned[field] = null;
+      return;
+    }
+    if (typeof raw !== 'string' || !allowed.includes(raw.trim().toLowerCase())) {
+      addError(field, `${label} must be one of: ${allowed.join(', ')}.`);
+      return;
+    }
+    cleaned[field] = raw.trim().toLowerCase();
+  };
+
+  return { text, choice, optionalChoice };
 }
 
 function checkBodyObject(body) {
@@ -104,12 +121,13 @@ function validateCreateListing(body) {
 
   unsupportedFields(body, addError);
 
-  const { text, choice } = makeCheckers(body, cleaned, addError, false);
+  const { text, choice, optionalChoice } = makeCheckers(body, cleaned, addError, false);
   text('title', 'Title', cleanSingleLine);
   text('description', 'Description', cleanMultiLine);
   text('colour', 'Colour', cleanSingleLine);
   choice('category', 'Category', LISTING_CATEGORIES);
   choice('size', 'Size', LISTING_SIZES);
+  optionalChoice('gender', 'Gender', LISTING_GENDERS);
   choice('condition', 'Condition', LISTING_CONDITIONS);
   choice('listingType', 'Listing type', LISTING_TYPES);
 
@@ -156,12 +174,13 @@ function validateUpdateListing(body) {
 
   unsupportedFields(body, addError);
 
-  const { text, choice } = makeCheckers(body, cleaned, addError, true);
+  const { text, choice, optionalChoice } = makeCheckers(body, cleaned, addError, true);
   text('title', 'Title', cleanSingleLine);
   text('description', 'Description', cleanMultiLine);
   text('colour', 'Colour', cleanSingleLine);
   choice('category', 'Category', LISTING_CATEGORIES);
   choice('size', 'Size', LISTING_SIZES);
+  optionalChoice('gender', 'Gender', LISTING_GENDERS);
   choice('condition', 'Condition', LISTING_CONDITIONS);
   choice('listingType', 'Listing type', LISTING_TYPES);
 

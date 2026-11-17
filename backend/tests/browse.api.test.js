@@ -201,7 +201,7 @@ describe('GET /api/v1/listings: public browsing', () => {
   it('exposes only the public fields, and never private user data or internal fields', async () => {
     const res = await browse('', { token: alice.token });
     assert.equal(res.status, 200);
-    const allowed = ['category', 'colour', 'condition', 'createdAt', 'description', 'id', 'images', 'listingType', 'owner', 'price', 'size', 'status', 'title', 'updatedAt'];
+    const allowed = ['category', 'colour', 'condition', 'createdAt', 'description', 'gender', 'id', 'images', 'listingType', 'owner', 'price', 'size', 'status', 'title', 'updatedAt'];
     for (const listing of res.body.data.listings) {
       assert.deepEqual(Object.keys(listing).sort(), allowed, `unexpected fields on "${listing.title}"`);
       assert.deepEqual(Object.keys(listing.owner).sort(), ['id', 'name'], 'owner shows only id and name');
@@ -508,6 +508,7 @@ describe('GET /api/v1/listings: query validation', () => {
     ['category=hats', 'category'],
     ['category=tops,hats', 'category'],
     ['size=huge', 'size'],
+    ['gender=kids', 'gender'],
     ['condition=broken', 'condition'],
     ['listingType=rent', 'listingType'],
     ['type=rent', 'type'],

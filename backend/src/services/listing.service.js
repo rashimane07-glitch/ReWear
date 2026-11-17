@@ -52,6 +52,7 @@ async function createListing(userId, input) {
     description: input.description,
     category: input.category,
     size: input.size,
+    gender: input.gender === undefined ? null : input.gender,
     colour: input.colour,
     condition: input.condition,
     listingType: input.listingType,
@@ -250,7 +251,7 @@ function resolvePrice(current, updates) {
   return null; // switching to exchange/donate clears the price
 }
 
-// `updates` is already validated: any of title, description, category, size, colour,
+// `updates` is already validated: any of title, description, category, size, gender, colour,
 // condition, listingType, price.
 async function updateListing(userId, listingId, updates) {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {

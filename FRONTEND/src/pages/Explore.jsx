@@ -9,7 +9,7 @@ import { getListings, browseListings } from '../services/api'
 import { API_MODE } from '../services/config'
 import { OPTIONS as FILTER_OPTIONS } from '../services/listingMapper'
 
-const emptyFilters = (category) => ({ category: category ? [category] : [], size: [], condition: [], type: [], maxPrice: FILTER_OPTIONS.maxPrice })
+const emptyFilters = (category) => ({ category: category ? [category] : [], gender: [], size: [], condition: [], type: [], maxPrice: FILTER_OPTIONS.maxPrice })
 
 export default function Explore() {
   const [params] = useSearchParams()
@@ -36,13 +36,13 @@ export default function Explore() {
 
   // REAL mode: ask the server again whenever the search words, the sort or a server-side filter changes.
   // (The price slider is not a server filter: the backend has no price filter, see `results` below.)
-  const serverFilters = JSON.stringify([filters.category, filters.size, filters.condition, filters.type])
+  const serverFilters = JSON.stringify([filters.category, filters.gender, filters.size, filters.condition, filters.type])
   useEffect(() => {
     if (!API_MODE) return undefined
     const controller = new AbortController()
-    const [category, size, condition, type] = JSON.parse(serverFilters)
+    const [category, gender, size, condition, type] = JSON.parse(serverFilters)
     setAll(null); setLoadError(''); setNextCursor(null)
-    browseListings({ query: typed, sort, filters: { category, size, condition, type } }, { signal: controller.signal })
+    browseListings({ query: typed, sort, filters: { category, gender, size, condition, type } }, { signal: controller.signal })
       .then(({ listings, nextCursor: next }) => { setAll(listings); setNextCursor(next) })
       .catch((err) => { if (err && err.name === 'AbortError') return; setLoadError(err.message || 'Could not load the listings.'); setAll([]) })
     return () => controller.abort()
@@ -51,8 +51,8 @@ export default function Explore() {
   const loadMore = async () => {
     setLoadingMore(true); setLoadError('')
     try {
-      const [category, size, condition, type] = JSON.parse(serverFilters)
-      const { listings, nextCursor: next } = await browseListings({ query: typed, sort, filters: { category, size, condition, type }, cursor: nextCursor })
+      const [category, gender, size, condition, type] = JSON.parse(serverFilters)
+      const { listings, nextCursor: next } = await browseListings({ query: typed, sort, filters: { category, gender, size, condition, type }, cursor: nextCursor })
       setAll((current) => [...(current || []), ...listings]); setNextCursor(next)
     } catch (err) {
       setLoadError(err.message || 'Could not load more listings.')
@@ -70,6 +70,7 @@ export default function Explore() {
     const list = all.filter((i) =>
       (!q || `${i.name} ${i.category} ${i.description}`.toLowerCase().includes(q)) &&
       (!filters.category.length || filters.category.includes(i.category)) &&
+      (!filters.gender.length || filters.gender.includes(i.gender)) &&
       (!filters.size.length || filters.size.includes(i.size)) &&
       (!filters.condition.length || filters.condition.includes(i.condition)) &&
       (!filters.type.length || filters.type.includes(i.listingType)) &&

@@ -11,10 +11,10 @@ function Check({ label, checked, onChange }) {
   )
 }
 
-// filters shape: { category: [], size: [], condition: [], type: [], maxPrice: number }
+// filters shape: { category: [], gender: [], size: [], condition: [], type: [], maxPrice: number }
 export default function FilterSidebar({ filters, setFilters, onClear }) {
   const toggle = (key, value) =>
-    setFilters((f) => ({ ...f, [key]: f[key].includes(value) ? f[key].filter((v) => v !== value) : [...f[key], value] }))
+    setFilters((f) => { const cur = f[key] || []; return { ...f, [key]: cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value] } })
   return (
     <aside aria-label="Filters">
       <div className="flex justify-between items-baseline mb-4">
@@ -22,6 +22,7 @@ export default function FilterSidebar({ filters, setFilters, onClear }) {
         <button onClick={onClear} className="text-xs text-rose underline">Clear all</button>
       </div>
       <Group title="Listing type">{O.types.map(([v, l]) => <Check key={v} label={l} checked={filters.type.includes(v)} onChange={() => toggle('type', v)} />)}</Group>
+      <Group title="Gender">{O.genders.map((g) => <Check key={g} label={g} checked={(filters.gender || []).includes(g)} onChange={() => toggle('gender', g)} />)}</Group>
       <Group title="Category">{O.categories.map((c) => <Check key={c} label={c} checked={filters.category.includes(c)} onChange={() => toggle('category', c)} />)}</Group>
       <Group title="Size">{O.sizes.map((c) => <Check key={c} label={c} checked={filters.size.includes(c)} onChange={() => toggle('size', c)} />)}</Group>
       <Group title="Condition">{O.conditions.map((c) => <Check key={c} label={c} checked={filters.condition.includes(c)} onChange={() => toggle('condition', c)} />)}</Group>

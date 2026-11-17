@@ -71,7 +71,7 @@ export default function ProductDetails() {
     setSending(false); setOpen(false); setSent(true); setMessage('')
     toast(`${a.sent}. You'll see the owner's reply under My Requests.`)
   }
-  const details = [['Size', item.size], ['Category', item.category], ['Condition', item.condition], ...(item.colour ? [['Colour', item.colour]] : [])]
+  const details = [['Size', item.size], ['Category', item.category], ...(item.gender ? [['For', item.gender]] : []), ['Condition', item.condition], ...(item.colour ? [['Colour', item.colour]] : [])]
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12">

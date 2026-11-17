@@ -1,9 +1,9 @@
 // One place for all backend calls. React never talks to IBM Cloudant directly.
 // While VITE_API_URL is empty we return MOCK data; nothing is stored anywhere.
 import { products, categories, impactStats } from '../data/mockData'
-import { get, post, del, getPage, ApiError } from './http'
+import { get, post, patch, del, getPage, ApiError } from './http'
 import { API_MODE } from './config'
-import { fromBackend, toCreatePayload, toBrowseQuery } from './listingMapper'
+import { fromBackend, toCreatePayload, toUpdatePayload, toBrowseQuery, CATEGORY_TILES } from './listingMapper'
 import { fromBackendRequest, contactText, toOfferedItem, REQUEST_ACTIONS } from './requestMapper'
 
 // REAL mode = VITE_API_URL is set (see config.js). Task 11, phase 2: listings, photos and "my listings" use the
@@ -23,11 +23,7 @@ export const browseListings = (params, options = {}) =>
 export const getTrendingProducts = () => (API_URL ? browseListings({ limit: 4 }).then(({ listings }) => listings.map((l) => ({ ...l, image: l.images[0] }))) : mock(listings.filter((l) => l.status === 'active').slice(0, 4).map((l) => ({ ...l, image: l.images[0] }))))
 // REAL mode: Home category tiles named like the backend's categories (the demo tiles use names the backend does not have).
 // The pictures are the existing placeholder photos, reused in order.
-const REAL_CATEGORY_TILES = [
-  { name: 'Tops', image: '/images/cat-western.jpg' }, { name: 'Ethnic wear', image: '/images/cat-ethnic.jpg' },
-  { name: 'Bottoms', image: '/images/cat-casual.jpg' }, { name: 'Outerwear', image: '/images/cat-formal.jpg' },
-  { name: 'Accessories', image: '/images/cat-accessories.jpg' }, { name: 'Activewear', image: '/images/cat-men.jpg' },
-]
+const REAL_CATEGORY_TILES = CATEGORY_TILES // named like listingMapper's category labels
 export const getCategories = () => mock(API_URL ? REAL_CATEGORY_TILES : categories)
 export const getImpactStats = () => mock(impactStats)
 
@@ -133,6 +129,40 @@ const withListing = (r) => {
 }
 
 export const getMyListings = (userId) => (API_URL ? get('/listings/mine').then((d) => d.listings.map(fromBackend)) : mock(listings.filter((l) => l.ownerId === userId)))
+// Edit one of my listings. `original` = the listing as the screens have it, `values` = the edit form's values,
+// `newImages` = [{ file, url }] photos to ADD (the backend cannot remove or replace photos).
+// REAL mode: PATCH /listings/:id with ONLY the changed fields, then POST /listings/:id/images for new photos.
+// If the changes are saved but the photos fail, the error says so (code PHOTOS_NOT_UPLOADED); nothing is undone.
+export const updateListing = async (original, values, newImages = []) => {
+  if (API_URL) {
+    const path = `/listings/${encodeURIComponent(original.id)}`
+    const changes = toUpdatePayload(original, values)
+    const files = newImages.map((image) => image.file).filter(Boolean)
+    if (Object.keys(changes).length === 0 && files.length === 0) return { listing: original, changed: false }
+    let listing = original
+    if (Object.keys(changes).length > 0) listing = fromBackend((await patch(path, changes)).listing)
+    if (files.length > 0) {
+      const form = new FormData()
+      files.forEach((file) => form.append('images', file))
+      try {
+        listing = fromBackend((await post(`${path}/images`, form)).listing)
+      } catch (err) {
+        const saved = Object.keys(changes).length > 0 ? 'Your changes were saved, but the new photos' : 'The new photos'
+        throw new ApiError(`${saved} could not be uploaded: ${(err && err.message) || 'unknown problem'}`, { status: err && err.status, code: 'PHOTOS_NOT_UPLOADED' })
+      }
+    }
+    return { listing, changed: true }
+  }
+  const l = listings.find((x) => String(x.id) === String(original.id))
+  if (!l) throw new ApiError('Listing not found.', { status: 404, code: 'NOT_FOUND' })
+  Object.assign(l, {
+    name: values.name.trim(), description: values.description.trim(), category: values.category, gender: values.gender,
+    size: values.size, condition: values.condition, colour: values.colour.trim(),
+    ...(l.listingType === 'sell' ? { price: Number(values.price) } : {}),
+    images: [...l.images, ...newImages.map((image) => image.url)],
+  })
+  return mock({ listing: { ...l }, changed: true })
+}
 export const deleteListing = (id) => {
   if (API_URL) return del(`/listings/${encodeURIComponent(id)}`)
   const i = listings.findIndex((l) => l.id === id); if (i > -1) listings.splice(i, 1)

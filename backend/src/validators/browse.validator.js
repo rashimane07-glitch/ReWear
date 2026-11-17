@@ -6,7 +6,7 @@
 //
 // Accepted parameters:
 //   q            search words (title + description), max 5 words / 100 characters
-//   category, size, condition, listingType (alias: type)
+//   category, size, gender, condition, listingType (alias: type)
 //                one value, or several separated by commas / repeated: "size=m,l"
 //   colour (alias: color)   exact colour, any letter case
 //   sort         newest (default) | oldest | price_asc | price_desc
@@ -17,6 +17,7 @@ const ApiError = require('../utils/ApiError');
 const {
   LISTING_CATEGORIES,
   LISTING_SIZES,
+  LISTING_GENDERS,
   LISTING_CONDITIONS,
   LISTING_TYPES,
   BROWSE_SORTS,
@@ -27,6 +28,7 @@ const ALLOWED_PARAMS = [
   'q',
   'category',
   'size',
+  'gender',
   'condition',
   'listingType',
   'type',
@@ -102,6 +104,8 @@ function validateBrowseQuery(query) {
   if (category) filters.category = category;
   const size = choiceList('size', 'Size', LISTING_SIZES);
   if (size) filters.size = size;
+  const gender = choiceList('gender', 'Gender', LISTING_GENDERS);
+  if (gender) filters.gender = gender;
   const condition = choiceList('condition', 'Condition', LISTING_CONDITIONS);
   if (condition) filters.condition = condition;
 

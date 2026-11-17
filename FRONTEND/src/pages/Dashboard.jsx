@@ -9,6 +9,7 @@ import EmptyState from '../components/EmptyState'
 import ProductCard from '../components/ProductCard'
 import FormField, { inputClass } from '../components/FormField'
 import ImageWithFallback from '../components/ImageWithFallback'
+import EditListingModal from '../components/EditListingModal'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { API_MODE } from '../services/config'
@@ -24,8 +25,8 @@ function Stat({ label, value }) {
   return <div className="bg-blush/50 p-5"><p className="font-display text-4xl text-plum">{value}</p><p className="text-sm text-charcoal/70 mt-1">{label}</p></div>
 }
 
-function ListingRow({ item, onDelete }) {
-  const toast = useToast()
+function ListingRow({ item, onEdit, onDelete }) {
+  const editable = item.status === 'active' // the backend allows edits only while the listing is available
   return (
     <li className="flex gap-4 items-center border border-plum/15 p-3">
       <Link to={`/product/${item.id}`}><ImageWithFallback src={item.images[0]} alt={item.name} className="w-16 h-20 sm:w-20 sm:h-24" /></Link>
@@ -35,7 +36,7 @@ function ListingRow({ item, onDelete }) {
         <div className="mt-2"><StatusBadge status={item.status} /></div>
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
-        <button onClick={() => toast('Editing listings is not available yet.', 'error')} className="text-sm border border-plum text-plum px-3 py-1.5">Edit</button>
+        <button onClick={() => onEdit(item)} disabled={!editable} title={editable ? undefined : 'Only available listings can be edited.'} className="text-sm border border-plum text-plum px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Edit</button>
         <button onClick={() => onDelete(item)} className="text-sm border border-charcoal/40 px-3 py-1.5">Delete</button>
       </div>
     </li>
@@ -57,6 +58,7 @@ export default function Dashboard() {
   const [saved, setSaved] = useState([])
   const [reqTab, setReqTab] = useState('incoming')
   const [toDelete, setToDelete] = useState(null)
+  const [toEdit, setToEdit] = useState(null)
   const [editing, setEditing] = useState(false)
   const [profile, setProfile] = useState({ name: user.name, college: user.college, location: user.location || '', phone: user.contact?.value || '' })
 
@@ -106,7 +108,7 @@ export default function Dashboard() {
     }
   }
   const empty = (title, text, to, cta) => <EmptyState title={title} text={text} action={to && <Link to={to}><Button>{cta}</Button></Link>} />
-  const list = (items) => <ul className="flex flex-col gap-3">{items.map((i) => <ListingRow key={i.id} item={i} onDelete={setToDelete} />)}</ul>
+  const list = (items) => <ul className="flex flex-col gap-3">{items.map((i) => <ListingRow key={i.id} item={i} onEdit={setToEdit} onDelete={setToDelete} />)}</ul>
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 grid lg:grid-cols-[240px_1fr] gap-10">
@@ -203,6 +205,10 @@ export default function Dashboard() {
         )}
       </section>
 
+      {toEdit && (
+        <EditListingModal item={toEdit} onClose={() => setToEdit(null)} onStale={refresh}
+          onSaved={(_listing, changed) => { setToEdit(null); toast(changed ? 'Listing updated.' : 'No changes to save.'); if (changed) refresh() }} />
+      )}
       {toDelete && (
         <Modal title="Delete this listing?" onClose={() => setToDelete(null)}>
           <p className="text-sm text-charcoal/70 mb-6">“{toDelete.name}” will be removed from the marketplace. This can't be undone.</p>

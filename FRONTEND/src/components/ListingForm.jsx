@@ -10,7 +10,7 @@ import { createListing } from '../services/api'
 import { API_MODE } from '../services/config'
 import { OPTIONS, uiFieldErrors, encodeDescription, BACKEND_DESCRIPTION_MAX } from '../services/listingMapper'
 
-const empty = { name: '', category: '', size: '', condition: '', colour: '', price: '', lookingFor: '', description: '', location: '' }
+const empty = { name: '', category: '', gender: '', size: '', condition: '', colour: '', price: '', lookingFor: '', description: '', location: '' }
 
 // mode: 'sell' (shows price) or 'donate' (no price, listingType = donate)
 export default function ListingForm({ mode }) {
@@ -36,6 +36,7 @@ export default function ListingForm({ mode }) {
     if (values.name.trim().length < 3) e.name = 'Give the item a name (at least 3 characters).'
     else if (API_MODE && values.name.trim().length > 100) e.name = 'Keep the name under 100 characters.'
     if (!values.category) e.category = 'Choose a category.'
+    if (!values.gender) e.gender = 'Choose who it is for.'
     if (!values.size) e.size = 'Choose a size.'
     if (!values.condition) e.condition = 'Choose a condition.'
     if (OPTIONS.colourRequired && (values.colour.trim().length < 2 || values.colour.trim().length > 30)) e.colour = 'Enter the main colour (2-30 characters).'
@@ -121,6 +122,11 @@ export default function ListingForm({ mode }) {
           <FormField id="category" label="Category" error={errors.category}>
             <select id="category" value={values.category} onChange={set('category')} className={inputClass(errors.category)}>
               <option value="">Select category</option>{OPTIONS.categories.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </FormField>
+          <FormField id="gender" label="For" error={errors.gender}>
+            <select id="gender" value={values.gender} onChange={set('gender')} className={inputClass(errors.gender)}>
+              <option value="">Men / Women / Unisex</option>{OPTIONS.genders.map((g) => <option key={g}>{g}</option>)}
             </select>
           </FormField>
           <FormField id="size" label="Size" error={errors.size}>

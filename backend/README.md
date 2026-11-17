@@ -33,6 +33,8 @@ Environment variables (see `.env.example` for explanations): `PORT`, `NODE_ENV`,
 |---|---|
 | `npm run dev` / `npm start` | Start the API |
 | `npm test` | Run all automated tests (no internet, no credentials needed) |
+| `npm run seed:demo:dry` | Shows what the demo seed would do. Writes nothing; works without Cloudant settings (then it only checks the demo data and photos) |
+| `npm run seed:demo` | Adds the demo seller and the 30 demo listings (see "Demo data" below). Safe to repeat |
 | `npm run db:setup` | Create the database (if missing) and the indexes. **Run again after updating to Task 8** (the two `listing-feed-*` indexes), **to Task 9** (the three `request-by-*` indexes) **and to Task 10** (`listing-admin-created` and the two `report-by-*` indexes) |
 | `npm run db:verify-browse` | Read-only check of the browse queries against your **real** Cloudant (see "What is verified") |
 | `npm run db:verify-requests` | Read-only check of the request **indexes and queries** against your **real** Cloudant (see "What is verified"). It never writes, and it does **not** test the request workflow (send, accept, decline, cancel, complete) |
@@ -80,6 +82,7 @@ and a client cannot ask for them (`status`, `isDeleted`, ... are rejected as unk
 | `q` | search words | Every word must appear in the **title or description** (any letter case, part of a word is enough: `jack` finds "Denim jacket"). Max 5 words / 100 characters. Special characters are matched literally. |
 | `category` | `tops, bottoms, dresses, ethnic_wear, outerwear, activewear, accessories, other` | One value, or several: `category=tops,dresses` or repeated |
 | `size` | `xs, s, m, l, xl, xxl, free_size` | Same as category |
+| `gender` | `men, women, unisex` | Same as category. Older listings with no gender never match a gender filter (they still show when no gender is chosen) |
 | `condition` | `new_with_tags, like_new, good, fair` | Same as category |
 | `listingType` (alias `type`) | `sell, exchange, donate` | Same as category |
 | `colour` (alias `color`) | text, up to 30 characters | Exact match, any letter case (`blue` = `Blue`) |
@@ -291,6 +294,36 @@ they come from the login token and from the server. A response looks like:
 `listing-admin-created` (`type, isDeleted, createdAt`) serves the sorted admin overview (the query adds `$exists: true` on `createdAt`, the same approach as the public feed; the optional status filter is applied on top).
 `report-by-reporter` (`type, reporterId`) and `report-by-status` (`type, status`) serve plain equality lookups: a student's reports and open count, and the admin queue (one query per status, merged and sorted in the code, capped at 200).
 All three are created by `npm run db:setup`; defined in `src/config/database.js`.
+
+## Gender and categories
+
+Listings have an optional `gender`: `men`, `women` or `unisex` (send it on `POST /listings` and `PATCH /listings/:id`; `null` clears it).
+Listings created before this field existed have none and are returned with `"gender": null`. No database change or new index is needed.
+
+The category codes did not change. The frontend shows them with these labels (`FRONTEND/src/services/listingMapper.js`):
+
+| Frontend label | Backend `category` |
+|---|---|
+| Tops & Shirts | `tops` |
+| Dresses & Kurtis | `dresses` (kurtis are filed here) |
+| Jeans & Trousers | `bottoms` |
+| Jackets & Hoodies | `outerwear` |
+| Ethnic Wear | `ethnic_wear` (sarees, lehengas, kurta sets, salwar suits) |
+| Shoes & Accessories | `accessories` |
+| Activewear / Other | `activewear` / `other` |
+
+## Demo data (`npm run seed:demo`)
+
+Adds **one** demo seller (`demo.seller@example.com`, name "ReWear Demo Seller") and **exactly 30** listings: 15 men + 15 women
+(Tops & Shirts 3+2, Dresses & Kurtis 0+5, Jeans & Trousers 3+2, Jackets & Hoodies 3+2, Ethnic Wear 1+4, Shoes & Accessories 5+0).
+The data is in `scripts/demo-listings.js`; every listing is checked with the same validator as `POST /listings` before anything is written.
+
+- **Safe to repeat:** fixed ids (`user:demo-seller-rewear`, `listing:demo-listing-01` … `-30`); a second run creates nothing.
+- **Marked:** every record it creates has `isDemo: true` and `demoSeed: "rewear-demo-seed-v1"`.
+- **Never touches real data:** it never deletes anything and never changes a record without that marker. If a real record uses a demo id or the demo email, it is left alone and reported.
+- **Photos:** put `demo-01.jpg` … `demo-30.jpg` in `backend/demo-images/` (see the README there). They are stored exactly like app uploads (`uploads/listings/<id>/…`). Missing photos are skipped; run the seed again later to add them.
+- **Demo seller login:** set `DEMO_SELLER_PASSWORD` in `.env` before the first run if you want to log in as the seller. Otherwise its password is random and unknown.
+- The demo seller has no phone contact, so it cannot accept requests until someone logs in as it and adds one.
 
 ## How the Cloudant queries work (and their limits)
 

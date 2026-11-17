@@ -18,6 +18,9 @@ const LISTING_CATEGORIES = [
 
 const LISTING_SIZES = ['xs', 's', 'm', 'l', 'xl', 'xxl', 'free_size'];
 
+// Who the piece is for. Optional on a listing: older listings have no gender (shown as null).
+const LISTING_GENDERS = ['men', 'women', 'unisex'];
+
 const LISTING_CONDITIONS = ['new_with_tags', 'like_new', 'good', 'fair'];
 
 const LISTING_TYPES = ['sell', 'exchange', 'donate'];
@@ -99,6 +102,7 @@ const REPORT_LIMITS = Object.freeze({
 module.exports = {
   LISTING_CATEGORIES,
   LISTING_SIZES,
+  LISTING_GENDERS,
   LISTING_CONDITIONS,
   LISTING_TYPES,
   LISTING_STATUS,
