@@ -17,10 +17,16 @@ const app = express();
 
 // --- Basic middleware ---
 // Only the React (Vite) frontend is allowed to call this API from a browser.
-// The address comes from FRONTEND_URL (see src/config/env.js).
+// The address comes from FRONTEND_URL (see src/config/env.js). Outside production, any
+// http://localhost:<port> or http://127.0.0.1:<port> is accepted too, because Vite moves to the
+// next free port (5174, 5175, ...) when 5173 is busy, and the browser would otherwise block every call.
+const LOCAL_DEV_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):\d{1,5}$/;
+const isAllowedOrigin = (origin) =>
+  origin === config.frontendUrl || (config.env !== 'production' && LOCAL_DEV_ORIGIN.test(origin));
 app.use(
   cors({
-    origin: config.frontendUrl,
+    // No Origin header (curl, server-to-server, same-origin) is not a browser cross-site call: allow it.
+    origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin) ? origin || true : false),
   })
 );
 app.use(express.json({ limit: '1mb' })); // Parses JSON request bodies.
