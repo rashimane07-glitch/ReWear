@@ -8,13 +8,15 @@ import EmptyState from '../components/EmptyState'
 import ImageWithFallback from '../components/ImageWithFallback'
 import Button from '../components/Button'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../components/Toast'
 import { getListings, getRequests } from '../services/api'
-import { FILTER_OPTIONS } from '../data/listings'
+import { OPTIONS } from '../services/listingMapper'
 
 const steps = ['Pick a piece you love', 'Offer one of yours', 'The owner accepts or rejects', 'Share contacts and arrange the swap']
 
 export default function Exchange() {
   const { user } = useAuth()
+  const toast = useToast()
   const navigate = useNavigate()
   const [all, setAll] = useState(null)
   const [sent, setSent] = useState([])
@@ -25,11 +27,11 @@ export default function Exchange() {
   const [offerFor, setOfferFor] = useState(null)
 
   const load = () => {
-    getListings().then(setAll)
+    getListings({ listingType: 'exchange' }).then(setAll).catch((err) => { setAll([]); toast(err.message, 'error') })
     if (user) getRequests(user.id).then(({ sent, incoming }) => {
       setSent(sent.filter((r) => r.type === 'exchange'))
       setWaiting(incoming.filter((r) => r.type === 'exchange' && r.status === 'pending').length)
-    })
+    }).catch((err) => toast(err.message, 'error'))
   }
   useEffect(() => { load() }, [user])
 
@@ -83,7 +85,7 @@ export default function Exchange() {
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by item or what they’re looking for…" aria-label="Search exchange listings" className="bg-transparent flex-1 focus:outline-none placeholder:text-charcoal/50" />
           </label>
           <select value={size} onChange={(e) => setSize(e.target.value)} aria-label="Filter by size" className="bg-transparent text-sm focus:outline-none">
-            <option value="">All sizes</option>{FILTER_OPTIONS.sizes.map((s) => <option key={s}>{s}</option>)}
+            <option value="">All sizes</option>{OPTIONS.sizes.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
         <div className="flex flex-wrap gap-2 mb-10">

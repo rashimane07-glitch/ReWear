@@ -1,151 +1,93 @@
 // One place for all backend calls. React never talks to IBM Cloudant directly.
 // While VITE_API_URL is empty we return MOCK data; nothing is stored anywhere.
 import { products, categories, impactStats } from '../data/mockData'
-import { listings } from '../data/listings'
-import { getToken } from './auth'
+import { get, post, patch, del, getPage, ApiError } from './http'
+import { API_MODE } from './config'
+import { fromBackend, toCreatePayload, toUpdatePayload, toBrowseQuery, CATEGORY_TILES } from './listingMapper'
+import { fromBackendRequest, contactText, toOfferedItem, REQUEST_ACTIONS } from './requestMapper'
 
-const API_URL = import.meta.env.VITE_API_URL
+// REAL mode = VITE_API_URL is set (see config.js). Task 11, phase 2: listings, photos and "my listings" use the
+// backend (through http.js + listingMapper.js). Phase 3: requests, exchange offers and the accept / decline / cancel /
+// complete actions use the backend too (http.js + requestMapper.js). A failed real call is thrown to the screen; it is
+// NEVER answered with demo data.
+const API_URL = API_MODE
 const mock = (data) => new Promise((resolve) => setTimeout(() => resolve(data), 150))
 
-// ---------------------------------------------------------------------------
-// Real-API helpers (only used when VITE_API_URL is set)
-// Backend responses look like { success: true, data: {...} }.
-// ---------------------------------------------------------------------------
-const MAX_IMAGES = 5
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+// REAL mode: one page of the public browse (no login needed), mapped to the shape the screens use.
+// params: { query, sort: 'newest'|'low'|'high', filters: { category, size, condition, type }, limit, cursor, listingType }.
+// Returns { listings, nextCursor } (nextCursor is null on the last page). `options.signal` cancels the call.
+export const browseListings = (params, options = {}) =>
+  getPage(`/listings?${toBrowseQuery(params)}`, { auth: false, signal: options.signal })
+    .then(({ data, meta }) => ({ listings: data.listings.map(fromBackend), nextCursor: (meta && meta.nextCursor) || null }))
 
-async function call(path, opts = {}) {
-  const token = getToken()
-  const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData
-  const headers = {
-    ...(opts.body && !isForm ? { 'Content-Type': 'application/json' } : {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
-  const res = await fetch(`${API_URL}${path}`, { ...opts, headers })
-  let json = null
-  try { json = await res.json() } catch { /* empty or non-JSON body */ }
-  if (!res.ok || (json && json.success === false)) {
-    const err = new Error(json?.error?.message || json?.message || `Request failed (${res.status})`)
-    err.status = res.status
-    err.details = json?.error?.details
-    throw err
-  }
-  return json && json.data !== undefined ? json.data : json
-}
-
-// The list may come back as an array or wrapped in an object; handle both safely.
-const pickList = (d, keys) => {
-  if (Array.isArray(d)) return d
-  for (const k of keys) if (Array.isArray(d?.[k])) return d[k]
-  return []
-}
-const toMillis = (v) => {
-  if (typeof v === 'number') return v
-  const t = Date.parse(v)
-  return Number.isNaN(t) ? undefined : t
-}
-// Backend images are { id, url }; the UI components expect plain URL strings.
-const imageUrls = (imgs) => (Array.isArray(imgs) ? imgs : []).map((i) => (typeof i === 'string' ? i : i?.url)).filter(Boolean)
-
-// Backend listing -> the shape the existing UI components use.
-// Seller contact is NOT invented: only what the backend sends is kept.
-const normalizeListing = (l) => {
-  if (!l) return l
-  const images = imageUrls(l.images)
-  const owner = l.owner || {}
-  return {
-    ...l,
-    name: l.title ?? l.name,
-    images,
-    image: images[0],
-    listedAt: toMillis(l.createdAt),
-    ownerId: owner.id ?? l.ownerId,
-    seller: { name: owner.name || owner.displayName || 'Seller', college: owner.college },
-  }
-}
-const normalizeRequest = (r) => ({
-  ...r,
-  createdAt: toMillis(r.createdAt) ?? r.createdAt,
-  listing: r.listing ? normalizeListing(r.listing) : r.listing,
-})
-
-// ---------------------------------------------------------------------------
-// Browse
-// ---------------------------------------------------------------------------
-// The backend has no "trending" sort, so we show the newest 4 listings.
-export const getTrendingProducts = () =>
-  API_URL
-    ? call('/listings')
-        .then((d) => pickList(d, ['listings', 'items', 'results']).slice(0, 4).map(normalizeListing))
-        .catch(() => [])
-    : mock(listings.filter((l) => l.status === 'active').slice(0, 4).map((l) => ({ ...l, image: l.images[0] })))
-export const getCategories = () => mock(categories)
+export const getTrendingProducts = () => (API_URL ? browseListings({ limit: 4 }).then(({ listings }) => listings.map((l) => ({ ...l, image: l.images[0] }))) : mock(listings.filter((l) => l.status === 'active').slice(0, 4).map((l) => ({ ...l, image: l.images[0] }))))
+// REAL mode: Home category tiles named like the backend's categories (the demo tiles use names the backend does not have).
+// The pictures are the existing placeholder photos, reused in order.
+const REAL_CATEGORY_TILES = CATEGORY_TILES // named like listingMapper's category labels
+export const getCategories = () => mock(API_URL ? REAL_CATEGORY_TILES : categories)
 export const getImpactStats = () => mock(impactStats)
 
 // ---- Phase 2 ----
-export const getListings = () =>
-  API_URL
-    ? call('/listings').then((d) => pickList(d, ['listings', 'items', 'results']).map(normalizeListing))
-    : mock([...listings])
-// The real endpoint needs a logged-in user (JWT).
+import { listings } from '../data/listings'
+// REAL mode: the newest listings (up to 50, one page). params can add { listingType: 'exchange' } etc.
+export const getListings = (params = {}) => (API_URL ? browseListings({ limit: 50, ...params }).then((r) => r.listings) : mock([...listings]))
+// REAL mode: needs a login (the backend's GET /listings/:id does). A missing listing gives null; a guest gets an
+// ApiError with status 401 that the page turns into "please log in".
 export const getListingById = (id) =>
   API_URL
-    ? call(`/listings/${id}`).then((d) => normalizeListing(d?.listing || d))
+    ? get(`/listings/${encodeURIComponent(id)}`).then((d) => fromBackend(d.listing)).catch((e) => { if (e instanceof ApiError && e.status === 404) return null; throw e })
     : mock(listings.find((l) => String(l.id) === String(id)) || null)
-
-// Real API accepts: listingId, optional message, optional offeredItem { title, description }.
-// It does NOT accept offeredListingId, so the real call sends offeredItem instead.
-// MOCK: pretends to send a request. The seller is not actually notified until the backend exists.
-export const submitRequest = (listingId, message, user, offeredListingId, offeredItem) =>
+// Up to 4 other listings of the same category ("You may also like").
+export const getSimilarListings = (item) =>
   API_URL
-    ? call('/requests', {
-        method: 'POST',
-        body: JSON.stringify({
-          listingId,
-          ...(message ? { message } : {}),
-          ...(offeredItem?.title ? { offeredItem: { title: offeredItem.title, description: offeredItem.description || '' } } : {}),
-        }),
-      }).then((d) => normalizeRequest(d?.request || d))
+    ? browseListings({ filters: { category: [item.category] }, limit: 5 }).then((r) => r.listings.filter((l) => l.id !== item.id).slice(0, 4))
+    : mock(listings.filter((l) => l.category === item.category && l.id !== item.id).slice(0, 4))
+// The saved (wishlist) listings. REAL mode reads them one by one (login needed); ones that no longer exist are skipped.
+export const getListingsByIds = (ids) =>
+  API_URL ? Promise.all(ids.map((id) => getListingById(id).catch(() => null))).then((all) => all.filter(Boolean)) : mock(listings.filter((l) => ids.includes(l.id)))
+// MOCK: pretends to send a request. The seller is not actually notified in demo mode.
+// REAL mode: POST /requests { listingId, message?, offeredItem? }. For an exchange, `offeredListing` (the piece the person picked)
+// is turned into the backend's offeredItem { title, description } (the backend has no "offeredListingId"). Returns the new request.
+async function sendRealRequest(listingId, message, offeredListing) {
+  const body = { listingId: String(listingId) }
+  const text = String(message || '').trim()
+  if (text) body.message = text
+  if (offeredListing) body.offeredItem = toOfferedItem(offeredListing)
+  return fromBackendRequest((await post('/requests', body)).request)
+}
+export const submitRequest = (listingId, message, user, offeredListingId, offeredListing) =>
+  API_URL
+    ? sendRealRequest(listingId, message, offeredListing)
     : mock().then(() => addRequest(listingId, message, user, offeredListingId))
 
 // ---- Phase 3 ----
-// Real version: 1) POST the listing as JSON (only the fields the backend accepts),
-// 2) POST the images separately to /listings/:id/images (max 5 images, 5 MB each).
-// MOCK: adds the listing to memory for this browser session only (lost on refresh).
-export const createListing = async (data) => {
-  if (API_URL) {
-    const images = data.images || []
-    if (images.length > MAX_IMAGES) throw new Error(`You can upload at most ${MAX_IMAGES} images.`)
-    if (images.some((i) => i.file && i.file.size > MAX_IMAGE_BYTES)) throw new Error('Each image must be 5 MB or smaller.')
+// MOCK: adds the listing to memory for this browser session only (lost on refresh). Nothing is uploaded or stored.
+// REAL mode: two backend calls, because the backend takes the details and the photos separately:
+//   1) POST /listings (JSON) creates the listing, 2) POST /listings/:id/images (multipart, field "images") adds the photos.
+// If the photos fail, the listing that was just created is KEPT (it is not deleted again): the error thrown has code
+// 'PHOTOS_NOT_UPLOADED' and the new listing's id in `error.listingId` (and in the message), so the screen can point to it.
+async function createRealListing(data) {
+  const created = (await post('/listings', toCreatePayload(data))).listing
+  const files = (data.images || []).map((image) => image.file).filter(Boolean)
+  if (files.length === 0) return fromBackend(created)
 
-    const price = data.listingType === 'sell' ? Number(data.price) : undefined
-    const payload = {
-      title: data.title ?? data.name,
-      description: data.description,
-      category: data.category,
-      size: data.size,
-      colour: data.colour ?? data.color,
-      condition: data.condition,
-      listingType: data.listingType,
-      ...(price !== undefined ? { price } : {}),
-    }
-    const created = await call('/listings', { method: 'POST', body: JSON.stringify(payload) })
-    const listing = created?.listing || created
-
-    const files = images.map((i) => i.file).filter(Boolean)
-    if (files.length > 0) {
-      const form = new FormData()
-      files.forEach((f) => form.append('images', f))
-      try {
-        await call(`/listings/${listing.id}/images`, { method: 'POST', body: form })
-      } catch (e) {
-        throw new Error(`Listing was created but the images failed to upload: ${e.message}`)
-      }
-      const fresh = await call(`/listings/${listing.id}`)
-      return normalizeListing(fresh?.listing || fresh)
-    }
-    return normalizeListing(listing)
+  const form = new FormData()
+  files.forEach((file) => form.append('images', file))
+  try {
+    const uploaded = await post(`/listings/${created.id}/images`, form)
+    return fromBackend((uploaded && uploaded.listing) || created)
+  } catch (err) {
+    const why = (err && err.message) || 'unknown problem'
+    const failure = new ApiError(
+      `Your listing was saved (listing ID ${created.id}), but its photos could not be uploaded: ${why} Find it under My Listings (a donation: My Donations); delete it there and list it again with its photos. Do not submit this form again, or a second listing is created.`,
+      { status: err && err.status, code: 'PHOTOS_NOT_UPLOADED', details: { listingId: created.id } }
+    )
+    failure.listingId = created.id // the saved listing, so the screen can identify it (also in error.details.listingId)
+    throw failure
   }
+}
+export const createListing = (data) => {
+  if (API_URL) return createRealListing(data)
   const listing = {
     ...data, id: Date.now(), listedAt: Date.now(), originalPrice: undefined,
     images: data.images.map((i) => i.url), status: 'active', ownerId: data.owner?.id,
@@ -157,6 +99,7 @@ export const createListing = async (data) => {
 
 // ---- Phase 4: ownership, requests, dashboard ----
 // MOCK data lives in memory and resets on refresh. Real versions call the Express API with the user's JWT.
+
 ;[1, 3, 4].forEach((id) => { const l = listings.find((x) => x.id === id); if (l) l.ownerId = 'demo' }) // the demo account owns these
 listings.forEach((l) => { l.status = l.status || 'active' })
 
@@ -185,37 +128,105 @@ const withListing = (r) => {
   return { ...r, listing, offered: listings.find((l) => l.id === r.offeredListingId), ownerContact: shared && listing ? `${listing.seller.name.split(' ')[0].toLowerCase()}@campus.example` : null }
 }
 
-export const getMyListings = (userId) =>
-  API_URL
-    ? call('/listings/mine').then((d) => pickList(d, ['listings', 'items', 'results']).map(normalizeListing))
-    : mock(listings.filter((l) => l.ownerId === userId))
-// NOTE: the backend cannot set a listing's status (the PATCH validator rejects "status"),
-// so "mark unavailable" is not possible yet. Delete is the only removal available.
+export const getMyListings = (userId) => (API_URL ? get('/listings/mine').then((d) => d.listings.map(fromBackend)) : mock(listings.filter((l) => l.ownerId === userId)))
+// Edit one of my listings. `original` = the listing as the screens have it, `values` = the edit form's values,
+// `newImages` = [{ file, url }] photos to ADD (the backend cannot remove or replace photos).
+// REAL mode: PATCH /listings/:id with ONLY the changed fields, then POST /listings/:id/images for new photos.
+// If the changes are saved but the photos fail, the error says so (code PHOTOS_NOT_UPLOADED); nothing is undone.
+export const updateListing = async (original, values, newImages = []) => {
+  if (API_URL) {
+    const path = `/listings/${encodeURIComponent(original.id)}`
+    const changes = toUpdatePayload(original, values)
+    const files = newImages.map((image) => image.file).filter(Boolean)
+    if (Object.keys(changes).length === 0 && files.length === 0) return { listing: original, changed: false }
+    let listing = original
+    if (Object.keys(changes).length > 0) listing = fromBackend((await patch(path, changes)).listing)
+    if (files.length > 0) {
+      const form = new FormData()
+      files.forEach((file) => form.append('images', file))
+      try {
+        listing = fromBackend((await post(`${path}/images`, form)).listing)
+      } catch (err) {
+        const saved = Object.keys(changes).length > 0 ? 'Your changes were saved, but the new photos' : 'The new photos'
+        throw new ApiError(`${saved} could not be uploaded: ${(err && err.message) || 'unknown problem'}`, { status: err && err.status, code: 'PHOTOS_NOT_UPLOADED' })
+      }
+    }
+    return { listing, changed: true }
+  }
+  const l = listings.find((x) => String(x.id) === String(original.id))
+  if (!l) throw new ApiError('Listing not found.', { status: 404, code: 'NOT_FOUND' })
+  Object.assign(l, {
+    name: values.name.trim(), description: values.description.trim(), category: values.category, gender: values.gender,
+    size: values.size, condition: values.condition, colour: values.colour.trim(),
+    ...(l.listingType === 'sell' ? { price: Number(values.price) } : {}),
+    images: [...l.images, ...newImages.map((image) => image.url)],
+  })
+  return mock({ listing: { ...l }, changed: true })
+}
 export const deleteListing = (id) => {
-  if (API_URL) return call(`/listings/${id}`, { method: 'DELETE' })
+  if (API_URL) return del(`/listings/${encodeURIComponent(id)}`)
   const i = listings.findIndex((l) => l.id === id); if (i > -1) listings.splice(i, 1)
   return mock({ ok: true })
 }
+// REAL mode: GET /requests/received (I am the owner) + GET /requests/sent (I asked), both mapped for the screens.
+// CONTACT PRIVACY: the lists never carry a contact. For each ACCEPTED request I SENT, the single-request view
+// (GET /requests/:id) is read, because only that view can contain the owner's contact, and only while the backend
+// itself allows it (accepted + the listing reserved for that request). If it returns none, none is shown.
+async function getRealRequests() {
+  const [received, sent] = await Promise.all([get('/requests/received'), get('/requests/sent')])
+  const incoming = received.requests.map(fromBackendRequest)
+  const outgoing = sent.requests.map(fromBackendRequest)
+  await Promise.all(outgoing.filter((r) => r.status === 'accepted').map(async (r) => {
+    try { r.ownerContact = contactText((await get(`/requests/${encodeURIComponent(r.id)}`)).request.ownerContact) } catch { r.ownerContact = null }
+  }))
+  return { incoming, sent: outgoing }
+}
 export const getRequests = (userId) =>
-  API_URL
-    ? Promise.all([call('/requests/received'), call('/requests/sent')]).then(([inc, sent]) => ({
-        incoming: pickList(inc, ['requests', 'items', 'results']).map(normalizeRequest),
-        sent: pickList(sent, ['requests', 'items', 'results']).map(normalizeRequest),
-      }))
-    : mock({ incoming: requests.filter((r) => r.toUserId === userId).map(withListing), sent: requests.filter((r) => r.from.id === userId).map(withListing) })
-
-// Real backend actions: accept, decline, cancel, complete.
-const ACTION = { accepted: 'accept', declined: 'decline', rejected: 'decline', cancelled: 'cancel', completed: 'complete' }
+  API_URL ? getRealRequests() : mock({ incoming: requests.filter((r) => r.toUserId === userId).map(withListing), sent: requests.filter((r) => r.from.id === userId).map(withListing) })
+// status: 'accepted' | 'rejected' (= decline) | 'cancelled' | 'completed'. REAL mode: POST /requests/:id/<accept|decline|cancel|complete>.
 export const updateRequestStatus = (id, status) => {
   if (API_URL) {
-    const action = ACTION[status]
-    if (!action) return Promise.reject(new Error(`Unsupported request action: ${status}`))
-    return call(`/requests/${id}/${action}`, { method: 'POST' }).then((d) => normalizeRequest(d?.request || d))
+    const action = REQUEST_ACTIONS[status]
+    if (!action) return Promise.reject(new Error('That action is not available.'))
+    return post(`/requests/${encodeURIComponent(id)}/${action}`).then((d) => fromBackendRequest(d.request))
   }
-  const r = requests.find((x) => x.id === id); r.status = status === 'rejected' ? 'declined' : status
+  const r = requests.find((x) => x.id === id); const was = r.status; r.status = status
+  // Calling off an accepted request puts the item (and the piece offered in exchange) back on the market.
+  if (status === 'cancelled' && was === 'accepted') [r.listingId, r.offeredListingId].forEach((lid) => { const l = listings.find((x) => x.id === lid); if (l) l.status = 'active' })
   // Accepting reserves the item (and the piece offered in exchange) and declines other pending requests for it.
   const next = status === 'accepted' ? 'reserved' : status === 'completed' ? 'completed' : null
   if (next) [r.listingId, r.offeredListingId].forEach((lid) => { const l = listings.find((x) => x.id === lid); if (l) l.status = next })
-  if (status === 'accepted') requests.forEach((x) => { if (x.listingId === r.listingId && x.id !== r.id && x.status === 'pending') x.status = 'declined' })
+  if (status === 'accepted') requests.forEach((x) => { if (x.listingId === r.listingId && x.id !== r.id && x.status === 'pending') x.status = 'rejected' })
   return mock(r)
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Reports and administration (REAL mode only: the backend's /reports and /admin routes).
+// There is no demo data for these, so MOCK mode answers with a clear error instead of pretending.
+// ---------------------------------------------------------------------------------------------------------------
+const needsBackend = () => Promise.reject(new ApiError('Reports and the admin area need the real backend (set VITE_API_URL).', { code: 'MOCK_MODE' }))
+export const REPORT_REASONS = [['spam', 'Spam'], ['inappropriate', 'Inappropriate'], ['misleading', 'Misleading'], ['prohibited_item', 'Prohibited item'], ['harassment', 'Harassment'], ['other', 'Other']]
+
+// A student reports a listing. details is optional (max 500 characters).
+export const reportListing = (listingId, reason, details) =>
+  API_URL ? post('/reports', { targetType: 'listing', targetId: String(listingId), reason, ...(details && details.trim() ? { details: details.trim() } : {}) }).then((d) => d.report) : needsBackend()
+
+// Admin: the report queue. status: 'open' | 'resolved' | 'dismissed' | 'all'
+export const getAdminReports = (status = 'open') =>
+  API_URL ? get(`/admin/reports?status=${encodeURIComponent(status)}`).then((d) => d.reports) : needsBackend()
+export const dismissReport = (id, note) =>
+  API_URL ? post(`/admin/reports/${encodeURIComponent(id)}/dismiss`, note ? { note } : {}).then((d) => d.report) : needsBackend()
+// action: 'none' (handled) | 'remove_listing' (also remove the reported listing)
+export const resolveReport = (id, action, note) =>
+  API_URL ? post(`/admin/reports/${encodeURIComponent(id)}/resolve`, { action, ...(note ? { note } : {}) }).then((d) => d.report) : needsBackend()
+
+// Admin: every listing (any status), newest first, one page at a time. state: '' (not removed) | available | reserved | completed | removed
+export const getAdminListings = ({ state = '', cursor } = {}) => {
+  if (!API_URL) return needsBackend()
+  const q = new URLSearchParams({ limit: '20' })
+  if (state) q.set('state', state)
+  if (cursor) q.set('cursor', cursor)
+  return getPage(`/admin/listings?${q}`).then(({ data, meta }) => ({ listings: data.listings, nextCursor: (meta && meta.nextCursor) || null }))
+}
+export const removeListingAsAdmin = (id, note) =>
+  API_URL ? post(`/admin/listings/${encodeURIComponent(id)}/remove`, note ? { note } : {}).then((d) => d.listing) : needsBackend()

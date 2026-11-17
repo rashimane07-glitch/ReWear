@@ -481,12 +481,14 @@ async function listingWithImage(user, overrides) {
 }
 
 describe('GET /api/v1/listings/:id', () => {
-  it('requires a token (401)', async () => {
+  it('is public: a visitor without a token can open a product page (no private fields)', async () => {
     const id = await createListing(alice);
     const res = await get(null, id);
-    assert.equal(res.status, 401);
-    assert.equal(res.body.success, false);
-    assert.equal(res.body.error.code, 'UNAUTHORIZED');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.listing.id, id);
+    assert.deepEqual(Object.keys(res.body.data.listing.owner).sort(), ['id', 'name']);
+    const text = JSON.stringify(res.body);
+    for (const secret of ['passwordHash', 'email', 'contact', 'imageKeys', 'isDeleted']) assert.equal(text.includes(secret), false, secret);
   });
 
   it('returns the listing to its owner and to other logged-in users (200)', async () => {

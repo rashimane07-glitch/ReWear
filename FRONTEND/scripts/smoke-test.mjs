@@ -2,6 +2,13 @@
 // Run: npm run test:smoke
 const mem = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) } }
 globalThis.localStorage = mem(); globalThis.sessionStorage = mem()
+// Safety: this test registers accounts and sends requests, so it must NEVER reach a real backend.
+// "npm run test:smoke" forces mock mode (scripts/run-smoke.mjs); this guard stops any other way of running it.
+const { API_MODE } = await import('../src/services/config.js')
+if (API_MODE) {
+  console.error('REFUSED: VITE_API_URL is set, so this test would write to the real backend. Run it with "npm run test:smoke".')
+  process.exit(1)
+}
 const auth = await import('../src/services/auth.js')
 const api = await import('../src/services/api.js')
 

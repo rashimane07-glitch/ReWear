@@ -169,3 +169,16 @@ test('colour is an exact, case-insensitive match', () => {
   assert.equal(regex.test('Blue'), false);
   assert.equal(regex.test('Light Blue Green'), false);
 });
+
+// ---------- gender filter ----------
+test('gender filter: one or several of men / women / unisex', () => {
+  assert.deepEqual(validateBrowseQuery({ gender: 'Men' }).filters, { gender: ['men'] });
+  assert.deepEqual(validateBrowseQuery({ gender: 'women,unisex' }).filters, { gender: ['women', 'unisex'] });
+  assert.ok(problems({ gender: 'kids' }).gender);
+});
+
+test('gender filter becomes part of the Cloudant selector', () => {
+  assert.equal(buildPublicSelector({ gender: ['women'] }).gender, 'women');
+  assert.deepEqual(buildPublicSelector({ gender: ['men', 'unisex'] }).gender, { $in: ['men', 'unisex'] });
+  assert.equal('gender' in buildPublicSelector({ category: ['tops'] }), false);
+});

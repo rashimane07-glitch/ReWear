@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react'
 import { Camera, X, RefreshCw } from 'lucide-react'
+import { OPTIONS } from '../services/listingMapper'
 
 const TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_MB = 10
+const MAX_MB = OPTIONS.maxImageMb // the real backend accepts 5 MB per photo (demo mode: 10)
 const MAX_IMAGES = 5
 
 // images: [{ id, file, url }]. The parent owns the list; we call onChange with the new list.
-export default function ImageUploader({ images, onChange, error }) {
+// maxImages: how many photos may still be added (default 5; the edit screen passes 5 minus the existing ones).
+export default function ImageUploader({ images, onChange, error, maxImages = MAX_IMAGES }) {
   const inputRef = useRef(null)
   const replaceRef = useRef(null)
   const replaceIndex = useRef(null)
@@ -24,7 +26,7 @@ export default function ImageUploader({ images, onChange, error }) {
     setMessage('')
     const next = [...images]
     for (const file of Array.from(fileList)) {
-      if (next.length >= MAX_IMAGES) { setMessage(`You can add up to ${MAX_IMAGES} photos.`); break }
+      if (next.length >= maxImages) { setMessage(`You can add up to ${maxImages} photo${maxImages === 1 ? '' : 's'}.`); break }
       const img = check(file)
       if (img) next.push(img)
     }
@@ -57,7 +59,7 @@ export default function ImageUploader({ images, onChange, error }) {
       >
         <div className="w-16 h-16 rounded-full bg-blush mx-auto flex items-center justify-center mb-4"><Camera className="text-plum" /></div>
         <p className="font-display text-2xl text-plum">Drop your photos here</p>
-        <p className="text-xs text-charcoal/70 mt-2">Use natural light and show the full piece.<br />JPG, PNG or WebP · up to {MAX_MB}MB each · max {MAX_IMAGES} photos</p>
+        <p className="text-xs text-charcoal/70 mt-2">Use natural light and show the full piece.<br />JPG, PNG or WebP · up to {MAX_MB}MB each · max {maxImages} photo{maxImages === 1 ? '' : 's'}</p>
         {/* accept="image/*" lets phones offer the camera as well as the gallery */}
         <input ref={inputRef} type="file" accept={TYPES.join(',')} multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
         <button type="button" onClick={() => inputRef.current.click()} className="mt-5 border border-plum text-plum px-5 py-2.5 text-sm font-medium hover:bg-plum hover:text-cream">Choose from device</button>

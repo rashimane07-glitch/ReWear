@@ -95,7 +95,8 @@ function escapeRegex(text) {
 function buildPublicSelector(filters = {}, searchTerms = []) {
   const selector = { type: 'listing', isDeleted: false, status: LISTING_STATUS.AVAILABLE };
 
-  for (const field of ['category', 'size', 'condition', 'listingType']) {
+  // gender: listings without a gender never match a gender filter (they still appear when no gender is chosen).
+  for (const field of ['category', 'size', 'gender', 'condition', 'listingType']) {
     const values = filters[field];
     if (values && values.length > 0) {
       selector[field] = values.length === 1 ? values[0] : { $in: values };

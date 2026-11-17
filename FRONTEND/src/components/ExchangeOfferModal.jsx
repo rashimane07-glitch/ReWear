@@ -6,6 +6,7 @@ import ImageWithFallback from './ImageWithFallback'
 import { useToast } from './Toast'
 import { useAuth } from '../context/AuthContext'
 import { getMyListings, submitRequest } from '../services/api'
+import { API_MODE } from '../services/config'
 
 // The student picks one of THEIR OWN active pieces to offer in exchange.
 export default function ExchangeOfferModal({ listing, onClose, onSent }) {
@@ -18,18 +19,25 @@ export default function ExchangeOfferModal({ listing, onClose, onSent }) {
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
-    getMyListings(user.id).then((l) => setOptions(l.filter((x) => x.listingType !== 'donate' && x.status === 'active' && x.id !== listing.id)))
+    getMyListings(user.id)
+      .then((l) => setOptions(l.filter((x) => x.listingType !== 'donate' && x.status === 'active' && x.id !== listing.id)))
+      .catch((err) => { setOptions([]); setError(err.message) })
   }, [user.id, listing.id])
 
   const send = async (e) => {
     e.preventDefault()
+    if (sending) return // one click = one request (the button is disabled too)
     if (!picked) return setError('Choose one of your pieces to offer.')
     setSending(true)
     try {
-      await submitRequest(listing.id, message, user, picked)
+      // the 5th argument (the picked piece itself) is what the real backend needs: it takes a title + description, not an id
+      await submitRequest(listing.id, message, user, picked, options.find((o) => o.id === picked))
       toast('Exchange request sent. You will see the owner’s reply under My Requests.')
       onSent?.(); onClose()
-    } catch (err) { setError(err.message); setSending(false) }
+    } catch (err) {
+      setError(err.message); setSending(false)
+      if (err.code === 'DUPLICATE_REQUEST') onSent?.() // already sent earlier: the page should show "Offer sent"
+    }
   }
 
   return (
@@ -37,7 +45,7 @@ export default function ExchangeOfferModal({ listing, onClose, onSent }) {
       <p className="text-sm text-charcoal/70 mb-4">You want <b>{listing.name}</b>. {listing.seller.name} is looking for: {listing.lookingFor || 'open to offers'}.</p>
       {options === null ? <p className="text-sm">Loading your pieces…</p> : options.length === 0 ? (
         <div className="bg-blush/50 p-4 text-sm">
-          You have no active pieces to offer yet.
+          {error ? `Could not load your pieces: ${error}` : 'You have no active pieces to offer yet.'}
           <Link to="/sell?type=exchange" onClick={onClose} className="block mt-2 text-plum underline">List a piece to swap</Link>
         </div>
       ) : (
@@ -57,6 +65,7 @@ export default function ExchangeOfferModal({ listing, onClose, onSent }) {
           <label htmlFor="offer-msg" className="text-sm font-medium block mt-4">Message (optional)</label>
           <textarea id="offer-msg" rows="3" maxLength={300} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full mt-2 p-3 bg-cream border border-plum/30 focus:outline-none focus:border-plum" />
           {error && <p role="alert" className="text-xs text-plum font-medium mt-2">{error}</p>}
+          {API_MODE && <p className="text-xs text-charcoal/60 mt-2">Your offer is sent as a short description of this piece. The piece itself stays listed until you remove it yourself.</p>}
           <Button type="submit" disabled={sending} className="w-full mt-4">{sending ? 'Sending…' : 'Offer Exchange'}</Button>
         </form>
       )}

@@ -234,7 +234,7 @@ describe('GET /api/v1/admin/listings', () => {
 
   it('exposes only the admin fields: never emails, contact details, hashes, storage keys or internal fields', async () => {
     const res = await adminList('state=');
-    const allowed = ['category', 'colour', 'condition', 'createdAt', 'description', 'id', 'imageCount', 'listingType', 'owner', 'price', 'removal', 'size', 'status', 'title', 'updatedAt'];
+    const allowed = ['category', 'colour', 'condition', 'createdAt', 'description', 'gender', 'id', 'imageCount', 'listingType', 'owner', 'price', 'removal', 'size', 'status', 'title', 'updatedAt'];
     const everything = [...res.body.data.listings, ...(await adminList('state=removed')).body.data.listings];
     for (const item of everything) {
       assert.deepEqual(Object.keys(item).sort(), allowed, item.title);

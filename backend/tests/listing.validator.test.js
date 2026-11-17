@@ -158,3 +158,27 @@ test('update: applies the same field rules as create, only to the fields sent', 
   assert.deepEqual(updateFailures({ price: '100' }), ['price']);
   assert.deepEqual(updateFailures({ price: 100000 }), ['price']);
 });
+
+// ---------- gender (optional: men | women | unisex) ----------
+test('gender is optional on create and stored as null when missing', () => {
+  assert.equal(validateCreateListing(valid()).gender, null);
+  assert.equal(validateCreateListing({ ...valid(), gender: null }).gender, null);
+});
+
+test('gender accepts men / women / unisex in any letter case', () => {
+  assert.equal(validateCreateListing({ ...valid(), gender: 'Women' }).gender, 'women');
+  assert.equal(validateCreateListing({ ...valid(), gender: ' MEN ' }).gender, 'men');
+  assert.equal(validateCreateListing({ ...valid(), gender: 'unisex' }).gender, 'unisex');
+});
+
+test('an unknown gender is rejected on create and update', () => {
+  assert.deepEqual(failingFields({ ...valid(), gender: 'kids' }), ['gender']);
+  assert.deepEqual(failingFields({ ...valid(), gender: 3 }), ['gender']);
+  assert.deepEqual(updateFailures({ gender: 'kids' }), ['gender']);
+});
+
+test('update: gender can be changed or cleared, and is left alone when not sent', () => {
+  assert.deepEqual(validateUpdateListing({ gender: 'Unisex' }), { gender: 'unisex' });
+  assert.deepEqual(validateUpdateListing({ gender: null }), { gender: null });
+  assert.equal('gender' in validateUpdateListing({ title: 'New title' }), false);
+});

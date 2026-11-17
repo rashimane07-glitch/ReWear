@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check:images": "node scripts/check-images.mjs",
-    "test:smoke": "npx --yes vite-node scripts/smoke-test.mjs"
+    "test:smoke": "node scripts/run-smoke.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.453.0",

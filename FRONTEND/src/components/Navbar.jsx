@@ -30,6 +30,7 @@ export default function Navbar() {
           </Link>
           {user ? (
             <>
+              {user.role === 'admin' && <NavLink to="/admin" className={linkClass}>Admin</NavLink>}
               <Link to="/dashboard" className="text-sm hover:text-plum">Hi, {user.name.split(' ')[0]}</Link>
               <Button variant="secondary" onClick={logOut}>Log out</Button>
             </>
@@ -50,6 +51,7 @@ export default function Navbar() {
           <Link to="/dashboard?tab=wishlist" onClick={close} className="py-1">Wishlist ({ids.length})</Link>
           {user ? (
             <div className="flex gap-3 pt-2">
+              {user.role === 'admin' && <Link to="/admin" onClick={close} className="flex-1"><Button variant="secondary" className="w-full">Admin</Button></Link>}
               <Link to="/dashboard" onClick={close} className="flex-1"><Button className="w-full">My account</Button></Link>
               <Button variant="secondary" className="flex-1" onClick={logOut}>Log out</Button>
             </div>

@@ -13,6 +13,7 @@ function toAdminListing(listingDoc, { ownerName }) {
     description: listingDoc.description,
     category: listingDoc.category,
     size: listingDoc.size,
+    gender: listingDoc.gender || null,
     colour: listingDoc.colour,
     condition: listingDoc.condition,
     listingType: listingDoc.listingType,

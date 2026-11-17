@@ -9,10 +9,12 @@ import EmptyState from '../components/EmptyState'
 import ProductCard from '../components/ProductCard'
 import FormField, { inputClass } from '../components/FormField'
 import ImageWithFallback from '../components/ImageWithFallback'
+import EditListingModal from '../components/EditListingModal'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
+import { API_MODE } from '../services/config'
 import { useWishlist } from '../context/WishlistContext'
-import { getMyListings, getRequests, getListings, deleteListing, updateRequestStatus } from '../services/api'
+import { getMyListings, getRequests, getListingsByIds, deleteListing, updateRequestStatus } from '../services/api'
 
 const TABS = [['overview', 'Overview', LayoutGrid], ['listings', 'My Listings', Shirt], ['requests', 'My Requests', Inbox], ['donations', 'My Donations', Gift], ['wishlist', 'Wishlist', Heart], ['profile', 'Profile', User]]
 const typeName = { sell: 'Purchase', exchange: 'Exchange', donate: 'Donation' }
@@ -23,8 +25,8 @@ function Stat({ label, value }) {
   return <div className="bg-blush/50 p-5"><p className="font-display text-4xl text-plum">{value}</p><p className="text-sm text-charcoal/70 mt-1">{label}</p></div>
 }
 
-function ListingRow({ item, onDelete }) {
-  const toast = useToast()
+function ListingRow({ item, onEdit, onDelete }) {
+  const editable = item.status === 'active' // the backend allows edits only while the listing is available
   return (
     <li className="flex gap-4 items-center border border-plum/15 p-3">
       <Link to={`/product/${item.id}`}><ImageWithFallback src={item.images[0]} alt={item.name} className="w-16 h-20 sm:w-20 sm:h-24" /></Link>
@@ -34,8 +36,8 @@ function ListingRow({ item, onDelete }) {
         <div className="mt-2"><StatusBadge status={item.status} /></div>
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
-        <button onClick={() => toast('Editing listings is not available yet.', 'error')} className="text-sm border border-plum text-plum px-3 py-1.5">Edit</button>
-        <button onClick={() => onDelete(item)} className="text-sm border border-charcoal/40 px-3 py-1.5">Delete</button>
+        <button onClick={() => onEdit(item)} disabled={!editable} title={editable ? undefined : 'Only available listings can be edited.'} className="text-sm border border-plum text-plum px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Edit</button>
+        <button onClick={() => onDelete(item)} disabled={!editable} title={editable ? undefined : 'Only available listings can be deleted.'} className="text-sm border border-charcoal/40 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">Delete</button>
       </div>
     </li>
   )
@@ -50,15 +52,22 @@ export default function Dashboard() {
   const tab = TABS.some(([k]) => k === params.get('tab')) ? params.get('tab') : 'overview'
   const [listings, setListings] = useState(null)
   const [reqs, setReqs] = useState({ incoming: [], sent: [] })
+  const [reqsLoading, setReqsLoading] = useState(true) // the first load of the requests is still running
+  const [reqError, setReqError] = useState('') // why the requests could not be loaded (REAL mode)
+  const [busyId, setBusyId] = useState(null) // the request being answered right now (stops double clicks)
   const [saved, setSaved] = useState([])
   const [reqTab, setReqTab] = useState('incoming')
   const [toDelete, setToDelete] = useState(null)
+  const [toEdit, setToEdit] = useState(null)
   const [editing, setEditing] = useState(false)
-  const [profile, setProfile] = useState({ name: user.name, college: user.college, location: user.location || '' })
+  const [profile, setProfile] = useState({ name: user.name, college: user.college, location: user.location || '', phone: user.contact?.value || '' })
 
-  const refresh = useCallback(() => { getMyListings(user.id).then(setListings); getRequests(user.id).then(setReqs) }, [user.id])
+  const refresh = useCallback(() => {
+    getMyListings(user.id).then(setListings).catch((err) => { setListings([]); toast(err.message, 'error') })
+    getRequests(user.id).then((r) => { setReqs(r); setReqError('') }).catch((err) => setReqError(err.message)).finally(() => setReqsLoading(false))
+  }, [user.id])
   useEffect(() => { refresh() }, [refresh])
-  useEffect(() => { getListings().then((all) => setSaved(all.filter((l) => ids.includes(l.id)))) }, [ids])
+  useEffect(() => { getListingsByIds(ids).then(setSaved).catch(() => setSaved([])) }, [ids])
 
   const mine = (listings || []).filter((l) => l.listingType !== 'donate')
   const donations = (listings || []).filter((l) => l.listingType === 'donate')
@@ -67,14 +76,39 @@ export default function Dashboard() {
   const activity = [...reqs.incoming.map((r) => ({ ...r, in: true })), ...reqs.sent].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4)
 
   const update = async (r, status) => {
-    await updateRequestStatus(r.id, status)
-    toast({ accepted: `Request accepted. ${r.from.name.split(' ')[0]} can now see your contact details.`, rejected: 'Request rejected.', completed: 'Marked as completed.' }[status], status === 'rejected' ? 'error' : 'success')
-    refresh()
+    if (busyId) return // another answer is still being sent
+    setBusyId(r.id)
+    try {
+      await updateRequestStatus(r.id, status)
+      toast({ accepted: `Request accepted. ${r.from.name.split(' ')[0]} can now see your contact details.`, rejected: 'Request rejected.', completed: 'Marked as completed.', cancelled: 'Request cancelled.' }[status], status === 'rejected' || status === 'cancelled' ? 'error' : 'success')
+    } catch (err) {
+      toast(err.message || 'Could not update the request.', 'error')
+      // The backend needs a phone number before it lets you accept: take the person straight to the profile form.
+      if (err.code === 'CONTACT_REQUIRED') { setEditing(true); navigate('/dashboard?tab=profile') }
+    } finally { setBusyId(null) }
+    refresh() // requests AND listings: accepting reserves the listing, cancelling reopens it (also reload after an error: things may have changed)
   }
-  const confirmDelete = async () => { await deleteListing(toDelete.id); setToDelete(null); toast('Listing deleted.'); refresh() }
-  const saveProf = async (e) => { e.preventDefault(); await saveProfile(profile); setEditing(false); toast('Profile updated.') }
+  const confirmDelete = async () => {
+    try { await deleteListing(toDelete.id) } catch (err) { setToDelete(null); return toast(err.message, 'error') }
+    setToDelete(null); toast('Listing deleted.'); refresh()
+  }
+  const saveProf = async (e) => {
+    e.preventDefault()
+    // REAL mode: the name and the phone number are saved to the account (the backend stores no college / location). Those two stay on this device.
+    const deviceOnlyChanged = API_MODE && (profile.college !== (user.college || '') || profile.location !== (user.location || ''))
+    const { phone, ...changes } = profile
+    if (API_MODE && phone.trim() !== (user.contact?.value || '')) changes.contact = phone.trim() ? { type: 'phone', value: phone.trim() } : null // null removes it
+    try {
+      const updated = await saveProfile(changes)
+      setProfile((p) => ({ ...p, phone: updated?.contact?.value || '' })) // the backend writes numbers in one standard form
+      setEditing(false)
+      toast(deviceOnlyChanged ? 'Saved. College and location are kept on this device only (your account stores just your name).' : 'Profile updated.')
+    } catch (err) {
+      toast(err.message || 'Could not save your profile.', 'error')
+    }
+  }
   const empty = (title, text, to, cta) => <EmptyState title={title} text={text} action={to && <Link to={to}><Button>{cta}</Button></Link>} />
-  const list = (items) => <ul className="flex flex-col gap-3">{items.map((i) => <ListingRow key={i.id} item={i} onDelete={setToDelete} />)}</ul>
+  const list = (items) => <ul className="flex flex-col gap-3">{items.map((i) => <ListingRow key={i.id} item={i} onEdit={setToEdit} onDelete={setToDelete} />)}</ul>
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 grid lg:grid-cols-[240px_1fr] gap-10">
@@ -123,7 +157,8 @@ export default function Dashboard() {
               {[['incoming', `Received (${reqs.incoming.length})`], ['sent', `Sent (${reqs.sent.length})`]].map(([k, l]) => (
                 <button key={k} onClick={() => setReqTab(k)} className={`px-4 py-2 text-sm border border-plum ${reqTab === k ? 'bg-plum text-cream' : 'text-plum'}`}>{l}</button>))}
             </div>
-            {reqs[reqTab].length ? <ul className="flex flex-col gap-3">{reqs[reqTab].map((r) => <RequestRow key={r.id} r={r} incoming={reqTab === 'incoming'} onUpdate={update} />)}</ul>
+            {reqsLoading ? <p>Loading…</p> : reqError && !reqs[reqTab].length ? <EmptyState title="Could not load your requests" text={reqError} action={<Button variant="secondary" onClick={refresh}>Try again</Button>} />
+              : reqs[reqTab].length ? <ul className="flex flex-col gap-3">{reqs[reqTab].map((r) => <RequestRow key={r.id} r={r} incoming={reqTab === 'incoming'} onUpdate={update} busy={busyId === r.id} />)}</ul>
               : empty(reqTab === 'incoming' ? 'No incoming requests' : 'No requests sent', reqTab === 'incoming' ? 'When someone asks about your pieces, it will show up here.' : 'Find something you love and send a request.', reqTab === 'sent' && '/explore', 'Explore')}
           </>
         )}
@@ -148,13 +183,19 @@ export default function Dashboard() {
             {editing ? (
               <form onSubmit={saveProf} className="max-w-md flex flex-col gap-5">
                 {[['name', 'Full name'], ['college', 'College name'], ['location', 'Location']].map(([k, l]) => (
-                  <FormField key={k} id={k} label={l}><input id={k} required={k !== 'location'} value={profile[k]} onChange={(e) => setProfile({ ...profile, [k]: e.target.value })} className={inputClass()} /></FormField>))}
+                  <FormField key={k} id={k} label={l}><input id={k} required={k === 'name' || (k === 'college' && !API_MODE)} value={profile[k]} onChange={(e) => setProfile({ ...profile, [k]: e.target.value })} className={inputClass()} /></FormField>))}
+                {API_MODE && (
+                  <FormField id="phone" label="Phone number (optional)" hint="Shown only to a student whose request you accept. You need it before you can accept requests. Example: 9876543210">
+                    <input id="phone" type="tel" inputMode="tel" autoComplete="tel" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className={inputClass()} />
+                  </FormField>
+                )}
+                {API_MODE && <p className="text-xs text-charcoal/60">Your name and phone number are saved to your account. College and location are kept on this device only for now.</p>}
                 <div className="flex gap-3"><Button type="submit">Save changes</Button><Button type="button" variant="secondary" onClick={() => setEditing(false)}>Cancel</Button></div>
               </form>
             ) : (
               <>
                 <dl className="max-w-md divide-y divide-plum/15 border-y border-plum/15">
-                  {[['Full name', user.name], ['Email', user.email], ['College', user.college], ['Location', user.location || 'Not added yet']].map(([k, v]) => (
+                  {[['Full name', user.name], ['Email', user.email], ['College', user.college], ['Location', user.location || 'Not added yet'], ...(API_MODE ? [['Phone', user.contact?.value || 'Not added yet']] : [])].map(([k, v]) => (
                     <div key={k} className="py-3 flex justify-between gap-4"><dt className="text-charcoal/60 text-sm">{k}</dt><dd>{v}</dd></div>))}
                 </dl>
                 <Button className="mt-6" onClick={() => setEditing(true)}>Edit profile</Button>
@@ -164,6 +205,10 @@ export default function Dashboard() {
         )}
       </section>
 
+      {toEdit && (
+        <EditListingModal item={toEdit} onClose={() => setToEdit(null)} onStale={refresh}
+          onSaved={(_listing, changed) => { setToEdit(null); toast(changed ? 'Listing updated.' : 'No changes to save.'); if (changed) refresh() }} />
+      )}
       {toDelete && (
         <Modal title="Delete this listing?" onClose={() => setToDelete(null)}>
           <p className="text-sm text-charcoal/70 mb-6">“{toDelete.name}” will be removed from the marketplace. This can't be undone.</p>

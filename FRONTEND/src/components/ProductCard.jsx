@@ -33,7 +33,7 @@ export default function ProductCard({ item }) {
         </p>
         <div className="flex items-center gap-2 mt-3 text-xs text-charcoal/70">
           <span className="w-6 h-6 rounded-full bg-blush text-plum flex items-center justify-center text-[10px] font-medium">{seller.name[0]}</span>
-          {seller.name} · {seller.college}
+          {seller.name}{seller.college ? ` · ${seller.college}` : ''}
         </div>
       </div>
     </article>

@@ -15,6 +15,7 @@ function toPublicListing(listingDoc, { images, ownerName }) {
     description: listingDoc.description,
     category: listingDoc.category,
     size: listingDoc.size,
+    gender: listingDoc.gender || null, // older listings have no gender
     colour: listingDoc.colour,
     condition: listingDoc.condition,
     listingType: listingDoc.listingType,
