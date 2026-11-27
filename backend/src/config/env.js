@@ -74,6 +74,16 @@ const config = {
     // <backendUrl>/uploads/listings/<listingId>/<file>.jpg
     backendUrl: readString('BACKEND_URL', `http://localhost:${port}`).replace(/\/+$/, ''),
   },
+
+  // ImageKit cloud image storage for NEW listing photos (see src/services/storage.service.js).
+  // When all three are set, uploads go to ImageKit; when any is empty, uploads are saved in the local
+  // uploads folder instead (tests, teammates without keys). Older local images keep working either way.
+  imagekit: {
+    publicKey: readString('IMAGEKIT_PUBLIC_KEY'),
+    privateKey: readString('IMAGEKIT_PRIVATE_KEY'), // secret: never send it to the browser
+    urlEndpoint: readString('IMAGEKIT_URL_ENDPOINT').replace(/\/+$/, ''),
+    folder: readString('IMAGEKIT_FOLDER', '/rewear'), // ImageKit folder that holds the listing photos
+  },
 };
 
 module.exports = config;

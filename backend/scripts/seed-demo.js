@@ -169,24 +169,25 @@ async function ensureSeller({ dryRun, userRepository }) {
   return 'created';
 }
 
-// Copies one photo into the uploads folder and records its key on the listing (only if it has no photo yet).
+// Uploads one photo (ImageKit when configured, else the local uploads folder) and records it on the
+// listing (only if it has no photo yet). `entry` is what the storage service says to save in Cloudant.
 async function attachImage({ listingId, image, listingRepository, storageService }) {
   const key = `listings/${listingId}/${crypto.randomUUID()}.${image.ext}`;
-  await storageService.uploadImage({ key, buffer: image.buffer, contentType: image.mime });
+  const entry = (await storageService.uploadImage({ key, buffer: image.buffer, contentType: image.mime })) || key;
   try {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const fresh = await listingRepository.findListingById(listingId);
       if (!isDemo(fresh) || fresh.isDeleted || (fresh.imageKeys || []).length > 0) {
-        await storageService.deleteImages([key]);
+        await storageService.deleteImages([entry]);
         return false;
       }
-      fresh.imageKeys = [key];
+      fresh.imageKeys = [entry];
       fresh.updatedAt = new Date().toISOString();
       if (await listingRepository.updateListing(fresh)) return true;
     }
     throw new Error(`Listing ${listingId} kept changing; its photo was not attached. Run the script again.`);
   } catch (err) {
-    await storageService.deleteImages([key]);
+    await storageService.deleteImages([entry]);
     throw err;
   }
 }

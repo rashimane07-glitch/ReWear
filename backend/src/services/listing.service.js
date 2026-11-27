@@ -16,20 +16,15 @@ const { toPublicListing } = require('../serializers/listing.serializer');
 // (revision conflict). We re-read the fresh document and try again a few times.
 const MAX_ATTEMPTS = 3;
 
-// "listings/<listingId>/<imageId>.jpg"  ->  "<imageId>"
-function imageIdFromKey(key) {
-  const fileName = key.slice(key.lastIndexOf('/') + 1);
-  const dot = fileName.lastIndexOf('.');
-  return dot === -1 ? fileName : fileName.slice(0, dot);
-}
-
 // Builds the API shape of a listing, including the public image links.
+// Each `imageKeys` entry is either an ImageKit object (new photos) or a local key string
+// (older demo photos); the storage service turns both into a link the browser can open.
 // `knownOwner` (optional) avoids one database read per listing when the owner is already loaded.
 async function toListingResponse(listingDoc, knownOwner) {
   const owner = knownOwner !== undefined ? knownOwner : await userRepository.findUserById(listingDoc.ownerId);
-  const images = (listingDoc.imageKeys || []).map((key) => ({
-    id: imageIdFromKey(key),
-    url: storageService.getSignedUrl(key),
+  const images = (listingDoc.imageKeys || []).map((entry) => ({
+    id: storageService.imageIdOf(entry),
+    url: storageService.getSignedUrl(entry),
   }));
   return toPublicListing(listingDoc, { images, ownerName: owner ? owner.name : null });
 }
@@ -145,18 +140,20 @@ async function addImages(userId, listingId, files) {
 
   const images = inspectFiles(files);
 
-  const uploadedKeys = [];
+  // What gets saved in Cloudant for each photo: the ImageKit object (url, fileId, size, ...)
+  // or, when ImageKit is not configured, the local key string.
+  const storedEntries = [];
   let saved;
   try {
     for (const image of images) {
       const key = `listings/${listingId}/${crypto.randomUUID()}.${image.ext}`; // unique: no name collisions
-      await storageService.uploadImage({ key, buffer: image.buffer, contentType: image.mime });
-      uploadedKeys.push(key);
+      const entry = await storageService.uploadImage({ key, buffer: image.buffer, contentType: image.mime });
+      storedEntries.push(entry);
     }
-    saved = await saveImageKeys(userId, listingId, uploadedKeys);
+    saved = await saveImageKeys(userId, listingId, storedEntries);
   } catch (err) {
     // Nothing was saved to the listing, so don't leave the uploaded files behind.
-    await storageService.deleteImages(uploadedKeys);
+    await storageService.deleteImages(storedEntries);
     throw err;
   }
 

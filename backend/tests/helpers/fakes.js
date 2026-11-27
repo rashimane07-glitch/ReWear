@@ -28,6 +28,11 @@ Object.assign(process.env, {
   CLOUDANT_DATABASE: 'rewear_test',
   UPLOADS_DIR: uploadsDir,
   BACKEND_URL: 'http://localhost:5000',
+  // Empty = ImageKit off, so tests use the temporary local folder and never reach the real ImageKit
+  // (these override the real keys in backend/.env). ImageKit tests use a fake client instead.
+  IMAGEKIT_PUBLIC_KEY: '',
+  IMAGEKIT_PRIVATE_KEY: '',
+  IMAGEKIT_URL_ENDPOINT: '',
 });
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));

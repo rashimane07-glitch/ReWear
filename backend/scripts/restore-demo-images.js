@@ -44,6 +44,8 @@ function planRestore(docs, { imagesDir = DEFAULT_IMAGES_DIR, uploadsDir = config
     if (!match || doc.demoSeed !== DEMO_MARKER || doc.isDeleted) continue;
     const number = match[1];
     for (const key of doc.imageKeys || []) {
+      // Photos stored on ImageKit (objects) live in the cloud already: nothing to restore.
+      if (typeof key !== 'string') continue;
       const entry = { listing: `demo-listing-${number}`, key };
       if (!key.startsWith(`listings/demo-listing-${number}/`)) {
         plan.push({ ...entry, action: 'skip', reason: 'image key is outside this listing folder' });
@@ -73,12 +75,13 @@ function planRestore(docs, { imagesDir = DEFAULT_IMAGES_DIR, uploadsDir = config
   return plan;
 }
 
-// Copies the planned files through the normal storage service (same path checks as app uploads).
+// Copies the planned files into the LOCAL uploads folder (same path checks as app uploads).
+// Always local, even when ImageKit is configured: Cloudant already points at these local keys.
 async function applyPlan(plan, storageService) {
   let copied = 0;
   for (const item of plan) {
     if (item.action !== 'copy') continue;
-    await storageService.uploadImage({ key: item.key, buffer: item.buffer, contentType: item.mime });
+    await storageService.saveLocalImage({ key: item.key, buffer: item.buffer });
     copied += 1;
   }
   return copied;

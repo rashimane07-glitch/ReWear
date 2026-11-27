@@ -3,8 +3,9 @@
 REST API for **ReWear**, a student marketplace to sell, exchange or donate pre-owned clothes.
 
 - **Stack:** Node.js (22 or newer) · Express · IBM Cloudant (database) · JWT + bcryptjs (login) · Multer (uploads)
-- **Images:** saved on the backend's own disk in `backend/uploads/` and served at `/uploads/...`.
-  The project does **not** use IBM Cloud Object Storage (it must stay free). Cloudant stores only the image *keys*, never image bytes.
+- **Images:** new listing photos are uploaded to **ImageKit** (when the `IMAGEKIT_*` settings are filled in); Cloudant stores
+  each photo's ImageKit link, file id and size, never the image bytes. Older/demo photos stay on the backend's own disk in
+  `backend/uploads/` and are served at `/uploads/...` (Cloudant stores their key). Without ImageKit settings, new photos are also saved locally.
 - **Frontend:** the React app in `../FRONTEND` (see the root README). It talks to this API only.
 
 > Status: tasks 1-9 (setup, auth, profile, listing create/edit/delete, image upload, browse/search/filters, requests/exchange/contact privacy) are done.
@@ -27,7 +28,8 @@ Open <http://localhost:5000/api/v1/health> to check that it runs, and
 <http://localhost:5000/api/v1/health/database> to check the Cloudant connection.
 
 Environment variables (see `.env.example` for explanations): `PORT`, `NODE_ENV`, `FRONTEND_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`,
-`CLOUDANT_URL`, `CLOUDANT_APIKEY`, `CLOUDANT_DATABASE`, `BACKEND_URL`, `UPLOADS_DIR`.
+`CLOUDANT_URL`, `CLOUDANT_APIKEY`, `CLOUDANT_DATABASE`, `BACKEND_URL`, `UPLOADS_DIR`,
+`IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT` (optional `IMAGEKIT_FOLDER`).
 
 | Command | What it does |
 |---|---|
@@ -323,7 +325,7 @@ The data is in `scripts/demo-listings.js`; every listing is checked with the sam
 - **Safe to repeat:** fixed ids (`user:demo-seller-rewear`, `listing:demo-listing-01` … `-30`); a second run creates nothing.
 - **Marked:** every record it creates has `isDemo: true` and `demoSeed: "rewear-demo-seed-v1"`.
 - **Never touches real data:** it never deletes anything and never changes a record without that marker. If a real record uses a demo id or the demo email, it is left alone and reported.
-- **Photos:** put `demo-01.jpg` … `demo-30.jpg` in `backend/demo-images/` (see the README there). They are stored exactly like app uploads (`uploads/listings/<id>/…`). Missing photos are skipped; run the seed again later to add them.
+- **Photos:** put `demo-01.jpg` … `demo-30.jpg` in `backend/demo-images/` (see the README there). They are stored exactly like app uploads (on ImageKit when it is configured, otherwise `uploads/listings/<id>/…`). Missing photos are skipped; run the seed again later to add them.
 - **Demo seller login:** set `DEMO_SELLER_PASSWORD` in `.env` before the first run if you want to log in as the seller. Otherwise its password is random and unknown.
 - The demo seller cannot log in and has no phone until you run `npm run demo:seller-login` (it needs a phone to accept requests).
 - On another computer, run `npm run demo:restore-images` so the demo photos appear there too.
@@ -371,6 +373,17 @@ The data is in `scripts/demo-listings.js`; every listing is checked with the sam
      nobody reported themselves, resolutions match statuses, no private-looking field; the repository finds real reports by id / reporter / status; and a `remove_listing` resolution points at a removed listing. These checks are **skipped**, not failed, when there is no data.
   It does **not** send, dismiss or resolve a report, test duplicate prevention or revision conflicts, remove a listing, or test the admin-only rule or the API-level privacy: those are verified only by the automated tests with the fake.
   The script has **not been run against the real Cloudant yet** (see `TASK10_PROGRESS.md`).
+
+## Deploying on Render
+
+- **Root directory:** `backend` · **Build command:** `npm install` · **Start command:** `npm run start:render`
+  (`start:render` first copies the demo photos from `demo-images/` into `uploads/`, because Render's disk is wiped on every
+  restart, then starts the server. It only reads Cloudant.)
+- **Environment variables** (Render → Environment; never commit them): `NODE_ENV=production`, `JWT_SECRET`, `JWT_EXPIRES_IN`,
+  `CLOUDANT_URL`, `CLOUDANT_APIKEY`, `CLOUDANT_DATABASE`, `FRONTEND_URL` (the deployed frontend address),
+  `BACKEND_URL` (this service's `https://….onrender.com` address, used in the demo photo links),
+  `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`. Render sets `PORT` itself.
+- New photos go to ImageKit, so they survive restarts.
 
 ## Project layout
 

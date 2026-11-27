@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "start": "node src/server.js",
+    "start:render": "node scripts/restore-demo-images.js || true; node src/server.js",
     "dev": "nodemon src/server.js",
     "db:setup": "node scripts/setup-database.js",
     "seed:demo": "node scripts/seed-demo.js",
@@ -19,13 +20,14 @@
     "admin:demote": "node scripts/make-admin.js --demote",
     "db:verify-requests": "node scripts/verify-requests.js",
     "db:verify-reports": "node scripts/verify-reports.js",
-    "test": "node --test"
+    "test": "node --test \"tests/*.test.js\""
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
     "@ibm-cloud/cloudant": "0.12.27",
+    "@imagekit/nodejs": "^7.15.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "debug": "4.4.3",
